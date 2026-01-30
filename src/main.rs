@@ -1,11 +1,19 @@
-use axum::{Router, routing::get};
+mod infra;
+
+use crate::{infra::app::create_app, infra::config::AppConfig, infra::setup::init_tracing};
+use std::env;
+use tower_http::trace::TraceLayer;
+use tracing::info;
 
 #[tokio::main]
-async fn main() {
-    // build our application with a single route
-    let app = Router::new().route("/", get(|| async { "Hello, World!" }));
-
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+async fn main() -> anyhow::Result<()> {
+    let path_config = env::var("BASE_CONFIG").expect("Key `BASE_CONFIG` not set");
+    let config = AppConfig::from_file(path_config)?;
+    let _guards = init_tracing(&config);
+    info!("Start server...");
+    let app = create_app(&config).layer(TraceLayer::new_for_http());
+    let listener = tokio::net::TcpListener::bind(&config.application.address).await?;
+    info!("Backend listening at {}", &listener.local_addr()?);
+    axum::serve(listener, app).await?;
+    Ok(())
 }
