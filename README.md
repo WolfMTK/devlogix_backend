@@ -8,8 +8,8 @@ Under development
 
 ## Requirements
 
-- Rust 1.85+ (edition 2024)
-- PostgreSQL 14+
+- Rust 1.92+ (edition 2024)
+- PostgreSQL 18+
 - SQLx CLI
 
 ## Installation
