@@ -1,0 +1,27 @@
+[package]
+name = "devlogix_backend"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = 0
+incremental = false
+overflow-checks = false
+
+[profile.dev]
+opt-level = "s"
+codegen-units = 16
+strip = true
+incremental = false
+
+[dependencies]
+anyhow = "1.0.100"
+axum = "0.8.8"
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.49.0", features = ["full"] }
+toml = { version = "0.9.11", features = ["serde"] }
