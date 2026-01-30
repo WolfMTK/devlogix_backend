@@ -1,0 +1,10 @@
+[application]
+allow_origins = ["*"]
+address = "0.0.0.0:3001"
+
+[database]
+url = "<YOUR_URL>"
+max_connections = 100
+
+[logger]
+log_path = "./logs.log"
