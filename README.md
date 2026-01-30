@@ -29,8 +29,6 @@ cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
 ### 3. Set up environment variables
 
-Create a `.env` file in the project root:
-
 ```env
 # Path to configuration file
 BASE_CONFIG=YOUR_PATH/config/config.toml
