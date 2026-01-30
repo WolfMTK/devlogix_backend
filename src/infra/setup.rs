@@ -55,8 +55,8 @@ where
     fmt::layer().with_filter(EnvFilter::new("trace"))
 }
 
-pub fn init_tracing(config: AppConfig) -> (WorkerGuard, WorkerGuard) {
-    let log_path = config.logger.log_path;
+pub fn init_tracing(config: &AppConfig) -> (WorkerGuard, WorkerGuard) {
+    let log_path = &config.logger.log_path;
 
     let error_appender = create_file_appender(&log_path, "err_logs");
     let log_appender = create_file_appender(&log_path, "app_logs");
