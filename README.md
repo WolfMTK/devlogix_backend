@@ -27,5 +27,3 @@ Under development
 4. Run database migrations: `sqlx migrate run`.
 
 5. Run the application: `cargo run --release`.
-
-By default, the service listens on `http://127.0.0.1:3001`.
