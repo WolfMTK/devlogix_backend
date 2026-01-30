@@ -7,4 +7,4 @@ url = "<YOUR_URL>"
 max_connections = 100
 
 [logger]
-log_path = "./logs.log"
+log_path = "./logs"
