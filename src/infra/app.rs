@@ -1,4 +1,5 @@
 use crate::infra::config::AppConfig;
+use crate::infra::state::AppState;
 use axum::{
     Router, http,
     http::header::{AUTHORIZATION, CONTENT_TYPE},
@@ -49,10 +50,10 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
         .allow_credentials(true)
 }
 
-pub fn create_app(config: &AppConfig) -> Router {
+pub fn create_app(config: &AppConfig, state: AppState) -> Router {
     let cors = build_cors(config);
 
-    Router::new().layer(cors).layer(
+    Router::new().with_state(state).layer(cors).layer(
         TraceLayer::new_for_http()
             .make_span_with(|request: &http::Request<_>| {
                 let request_id = Uuid::now_v7();
