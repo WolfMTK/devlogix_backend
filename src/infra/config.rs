@@ -12,11 +12,16 @@ pub struct LoggerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationConfig {
+    pub allow_origins: Vec<String>,
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
-    pub allow_origins: Vec<String>,
-    pub address: String,
+    pub application: ApplicationConfig,
 }
 
 impl AppConfig {
