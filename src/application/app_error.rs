@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-// TODO: Add new exceptions and a description
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("Database error: {0}")]
@@ -9,11 +8,17 @@ pub enum AppError {
     #[error("Invalid Id: {0}")]
     InvalidId(String),
 
-    #[error("")]
+    #[error("Session has already been committed")]
     SessionAlreadyCommitted,
 
-    #[error("")]
+    #[error("Session has already been rolled back")]
     SessionAlreadyRolledBack,
+
+    #[error("Failed to hash password")]
+    PasswordHashError,
+
+    #[error("Invalid username or password")]
+    InvalidCredentials,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
