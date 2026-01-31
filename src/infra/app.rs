@@ -1,17 +1,14 @@
 use crate::{
     adapter::http::routes::user::register,
-    infra::{
-        config::AppConfig,
-        state::AppState
-    }
+    infra::{config::AppConfig, state::AppState},
 };
 use axum::{
     http::{
         self,
-        header::{AUTHORIZATION, CONTENT_TYPE}
+        header::{AUTHORIZATION, CONTENT_TYPE},
     },
     routing::post,
-    Router
+    Router,
 };
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -59,11 +56,18 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
         .allow_credentials(true)
 }
 
+pub fn user_router() -> Router<AppState> {
+    Router::new().route("/register", post(register))
+}
+
+pub fn router() -> Router<AppState> {
+    Router::new().nest("/users", user_router())
+}
+
 pub fn create_app(config: &AppConfig, state: AppState) -> Router {
     let cors = build_cors(config);
     Router::new()
-        // TODO: Transfer routing
-        .route("/", post(register))
+        .merge(router())
         .with_state(state)
         .layer(cors)
         .layer(
