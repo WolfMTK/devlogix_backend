@@ -35,3 +35,4 @@ async-trait = "0.1.89"
 thiserror = "2.0.18"
 futures = "0.3.31"
 chrono = { version = "0.4.43", features = ["serde"] }
+argon2 = "0.5.3"
