@@ -1,8 +1,17 @@
-use crate::infra::config::AppConfig;
-use crate::infra::state::AppState;
+use crate::{
+    adapter::http::routes::user::register,
+    infra::{
+        config::AppConfig,
+        state::AppState
+    }
+};
 use axum::{
-    Router, http,
-    http::header::{AUTHORIZATION, CONTENT_TYPE},
+    http::{
+        self,
+        header::{AUTHORIZATION, CONTENT_TYPE}
+    },
+    routing::post,
+    Router
 };
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -52,20 +61,24 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 
 pub fn create_app(config: &AppConfig, state: AppState) -> Router {
     let cors = build_cors(config);
-
-    Router::new().with_state(state).layer(cors).layer(
-        TraceLayer::new_for_http()
-            .make_span_with(|request: &http::Request<_>| {
-                let request_id = Uuid::now_v7();
-                tracing::info_span!(
-                    "http-request",
-                    method = %request.method(),
-                    uri = %request.uri(),
-                    version = ?request.version(),
-                    request_id = %request_id
-                )
-            })
-            .on_request(DefaultOnRequest::new().level(Level::INFO))
-            .on_response(DefaultOnResponse::new().level(Level::INFO)),
-    )
+    Router::new()
+        // TODO: Transfer routing
+        .route("/", post(register))
+        .with_state(state)
+        .layer(cors)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &http::Request<_>| {
+                    let request_id = Uuid::now_v7();
+                    tracing::info_span!(
+                        "http-request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                        version = ?request.version(),
+                        request_id = %request_id
+                    )
+                })
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
 }
