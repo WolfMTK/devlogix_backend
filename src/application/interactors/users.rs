@@ -32,7 +32,7 @@ impl CreateUserInteractor {
     }
 
     pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<IdDTO> {
-        let hash = &self.hasher.hash_password(dto.password.as_str())?;
+        let hash = &self.hasher.hash_password(dto.password.as_str()).await?;
         let username = dto.username.clone();
         let user = User {
             id: Id::generate(),

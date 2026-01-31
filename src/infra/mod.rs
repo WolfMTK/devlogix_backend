@@ -2,6 +2,7 @@ use crate::adapter::crypto::argon2::ArgonPasswordHasher;
 use crate::infra::config::AppConfig;
 use crate::infra::db::init_db;
 use crate::infra::state::AppState;
+use std::sync::Arc;
 
 pub mod config;
 pub mod setup;
@@ -20,6 +21,6 @@ pub async fn init_app_state(config: &AppConfig) -> anyhow::Result<AppState>  {
 
     Ok(AppState {
         pool,
-        hasher: password_hasher,
+        hasher: Arc::new(password_hasher),
     })
 }

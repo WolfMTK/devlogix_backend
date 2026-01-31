@@ -1,4 +1,4 @@
-use crate::adapter::crypto::argon2::ArgonPasswordHasher;
+use crate::application::interface::crypto::CredentialsHasher;
 use crate::{
     adapter::db::{
         gateway::user::UserGateway,
@@ -20,7 +20,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Pool<Postgres>,
-    pub hasher: ArgonPasswordHasher,
+    pub hasher: Arc<dyn CredentialsHasher>,
 }
 
 #[async_trait]
@@ -31,13 +31,13 @@ pub trait FromAppState: Sized {
 #[async_trait]
 impl FromAppState for CreateUserInteractor {
     async fn from_app_state(state: &AppState) -> AppResult<Self> {
-        let session = SqlxSession::new(state.pool.clone()).await?;
+        let session = SqlxSession::new_lazy(state.pool.clone());
         let user_gateway = UserGateway::new(session.clone());
 
         Ok(CreateUserInteractor::new(
             Arc::new(session),
             Arc::new(user_gateway),
-            Arc::new(state.hasher.clone()),
+            state.hasher.clone(),
         ))
     }
 }

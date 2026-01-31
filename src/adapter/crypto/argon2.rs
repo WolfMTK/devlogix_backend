@@ -2,26 +2,31 @@ use crate::application::{
     app_error::{AppError, AppResult},
     interface::crypto::CredentialsHasher,
 };
-use argon2::{
-    password_hash::{rand_core::OsRng, SaltString}, Argon2, PasswordHash, PasswordHasher,
-    PasswordVerifier,
-};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use async_trait::async_trait;
 
 #[derive(Default, Clone)]
 pub struct ArgonPasswordHasher {
     hasher: Argon2<'static>,
 }
 
+#[async_trait]
 impl CredentialsHasher for ArgonPasswordHasher {
-    fn hash_password(&self, password: &str) -> AppResult<String> {
-        let salt = SaltString::generate(&mut OsRng);
-        let hash = self
-            .hasher
-            .hash_password(password.as_bytes(), &salt)
-            .map_err(|_| AppError::PasswordHashError)?
-            .to_string();
+    async fn hash_password(&self, password: &str) -> AppResult<String> {
+        let password = password.to_owned();
+        let hasher = self.hasher.clone();
 
-        Ok(hash)
+        tokio::task::spawn_blocking(move || {
+            let salt = SaltString::generate(&mut OsRng);
+            hasher
+                .hash_password(password.as_bytes(), &salt)
+                .map(|h| h.to_string())
+                .map_err(|_| AppError::PasswordHashError)
+        })
+            .await
+            .map_err(|_| AppError::PasswordHashError)?
     }
 
     fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool> {
