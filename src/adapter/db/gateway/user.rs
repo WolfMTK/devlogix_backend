@@ -2,15 +2,16 @@ use crate::{
     adapter::db::session::SqlxSession,
     application::{
         app_error::AppResult,
-        interface::gateway::user::UserWriter
+        interface::gateway::user::{
+            UserReader,
+            UserWriter
+        }
     },
-    domain::entities::{
-        id::Id,
-        user::User
-    }
+    domain::entities::{id::Id, user::User}
 };
 use async_trait::async_trait;
 use futures::FutureExt;
+use sqlx::postgres::PgRow;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -21,6 +22,20 @@ pub struct UserGateway {
 impl UserGateway {
     pub fn new(session: SqlxSession) -> Self {
         Self { session }
+    }
+
+    fn find_user(result: Option<PgRow>) -> AppResult<Option<User>> {
+        match result {
+            Some(row) => Ok(Some(User {
+                id: Id::new(row.try_get("id")?),
+                username: row.try_get("username")?,
+                email: row.try_get("email")?,
+                password: row.try_get("password")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            })),
+            None => Ok(None),
+        }
     }
 }
 
@@ -49,6 +64,59 @@ impl UserWriter for UserGateway {
                     .await?;
                     let id: Uuid = result.try_get("id")?;
                     Ok(Id::new(id))
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl UserReader for UserGateway {
+    async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
+        self.session
+            .with_tx(|tx| {
+                let email = email.to_owned();
+                async move {
+                    let result = sqlx::query(
+                        r#"
+                            SELECT 
+                                id, username, email, password, created_at, updated_at
+                            FROM 
+                                users
+                            WHERE email = $1
+                        "#,
+                    )
+                    .bind(&email)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    Self::find_user(result)
+                }
+                .boxed()
+            })
+            .await
+    }
+
+    async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
+        self.session
+            .with_tx(|tx| {
+                let user_id = user_id.value;
+                async move {
+                    let result = sqlx::query(
+                        r#"
+                            SELECT
+                                id, username, email, password, created_at, updated_at
+                            FROM
+                                users
+                            WHERE id = $1
+                        "#,
+                    )
+                    .bind(user_id)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    Self::find_user(result)
                 }
                 .boxed()
             })
