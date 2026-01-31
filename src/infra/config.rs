@@ -18,10 +18,23 @@ pub struct ApplicationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    pub default_max_lifetime: i64,
+    pub default_idle_timeout: i64,
+    pub remembered_max_lifetime: i64,
+    pub remembered_idle_timeout: i64,
+    pub rotation_interval: i64,
+    pub cookie_name: String,
+    pub cookie_secure: bool,
+    pub cookie_http_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
     pub application: ApplicationConfig,
+    pub session: SessionConfig,
 }
 
 impl AppConfig {
