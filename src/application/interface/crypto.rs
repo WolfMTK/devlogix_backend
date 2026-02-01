@@ -4,5 +4,5 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait CredentialsHasher: Send + Sync {
     async fn hash_password(&self, password: &str) -> AppResult<String>;
-    fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool>;
+    async fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool>;
 }

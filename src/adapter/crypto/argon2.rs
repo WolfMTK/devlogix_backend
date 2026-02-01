@@ -17,7 +17,6 @@ impl CredentialsHasher for ArgonPasswordHasher {
     async fn hash_password(&self, password: &str) -> AppResult<String> {
         let password = password.to_owned();
         let hasher = self.hasher.clone();
-
         tokio::task::spawn_blocking(move || {
             let salt = SaltString::generate(&mut OsRng);
             hasher
@@ -29,15 +28,17 @@ impl CredentialsHasher for ArgonPasswordHasher {
             .map_err(|_| AppError::PasswordHashError)?
     }
 
-    fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool> {
-        let parsed_hash = PasswordHash::new(hashed).map_err(|_| AppError::InvalidCredentials)?;
-
-        match self
-            .hasher
-            .verify_password(password.as_bytes(), &parsed_hash)
-        {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
+    async fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool> {
+        let password = password.to_owned();
+        let hashed = hashed.to_owned();
+        let hasher = self.hasher.clone();
+        tokio::task::spawn_blocking(move || {
+            let parsed_hash = PasswordHash::new(&hashed).map_err(|_| AppError::InvalidCredentials)?;
+            match hasher.verify_password(password.as_bytes(), &parsed_hash) {
+                Ok(_) => Ok(true),
+                Err(_) => Ok(false),
+            }
         }
+        ).await.map_err(|_|AppError::InvalidCredentials)?
     }
 }
