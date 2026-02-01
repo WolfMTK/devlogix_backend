@@ -1,18 +1,16 @@
 use crate::application::interface::crypto::CredentialsHasher;
+use crate::infra::config::AppConfig;
 use crate::{
-    adapter::db::{
-        gateway::user::UserGateway,
-        session::SqlxSession
-    },
+    adapter::db::{gateway::user::UserGateway, session::SqlxSession},
     application::{
         app_error::{AppError, AppResult},
-        interactors::users::CreateUserInteractor
-    }
+        interactors::users::CreateUserInteractor,
+    },
 };
 use async_trait::async_trait;
 use axum::{
     extract::{FromRef, FromRequestParts},
-    http::request::Parts
+    http::request::Parts,
 };
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
@@ -21,6 +19,7 @@ use std::sync::Arc;
 pub struct AppState {
     pub pool: Pool<Postgres>,
     pub hasher: Arc<dyn CredentialsHasher>,
+    pub config: Arc<AppConfig>,
 }
 
 #[async_trait]
@@ -28,6 +27,7 @@ pub trait FromAppState: Sized {
     async fn from_app_state(state: &AppState) -> AppResult<Self>;
 }
 
+// CreateUserInteractor
 #[async_trait]
 impl FromAppState for CreateUserInteractor {
     async fn from_app_state(state: &AppState) -> AppResult<Self> {

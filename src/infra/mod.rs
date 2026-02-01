@@ -22,5 +22,6 @@ pub async fn init_app_state(config: &AppConfig) -> anyhow::Result<AppState>  {
     Ok(AppState {
         pool,
         hasher: Arc::new(password_hasher),
+        config: Arc::new(config.clone()),
     })
 }
