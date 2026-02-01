@@ -1,10 +1,26 @@
 use crate::{
     application::{
-        app_error::AppResult,
-        dto::{id::IdDTO, user::CreateUserDTO},
-        interface::{crypto::CredentialsHasher, db::DBSession, gateway::user::UserWriter},
+        app_error::{
+            AppError,
+            AppResult
+        },
+        dto::{
+            id::IdDTO,
+            user::{
+                CreateUserDTO,
+                UserDTO
+            },
+        },
+        interface::{
+            crypto::CredentialsHasher,
+            db::DBSession,
+            gateway::user::{
+                UserReader,
+                UserWriter
+            },
+        }
     },
-    domain::entities::{id::Id, user::User},
+    domain::entities::{id::Id, user::User}
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -45,12 +61,45 @@ impl CreateUserInteractor {
         let user_id = match self.user_writer.insert(user).await {
             Ok(id) => id.value.to_string(),
             Err(err) => {
-                error!("The {} has not been created created. Error: {}", username, err);
+                error!(
+                    "The {} has not been created created. Error: {}",
+                    username, err
+                );
                 return Err(err);
             }
         };
         self.db_session.commit().await?;
         info!("The {} has been created", username);
         Ok(IdDTO { id: user_id })
+    }
+}
+
+#[derive(Clone)]
+pub struct GetMeInteractor {
+    user_reader: Arc<dyn UserReader>,
+}
+
+impl GetMeInteractor {
+    pub fn new(user_reader: Arc<dyn UserReader>) -> Self {
+        Self { user_reader }
+    }
+
+    pub async fn execute(&self, dto: IdDTO) -> AppResult<(UserDTO)> {
+        let user_id: Id<User> = dto.id.try_into()?;
+        let user = self
+            .user_reader
+            .find_by_id(&user_id)
+            .await?
+            .ok_or_else(|| {
+                error!("User not found for authenticated session {:?}", user_id);
+                AppError::InvalidCredentials
+            })?;
+        Ok(UserDTO {
+            id: user.id.value.to_string(),
+            username: user.username,
+            email: user.email,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        })
     }
 }
