@@ -5,16 +5,10 @@ use crate::{
         interface::{
             crypto::CredentialsHasher,
             db::DBSession,
-            gateway::{
-                session::SessionWriter,
-                user::UserReader
-            }
-        }
+            gateway::{session::SessionWriter, user::UserReader},
+        },
     },
-    domain::entities::{
-        id::Id,
-        session::Session
-    }
+    domain::entities::{id::Id, session::Session},
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -52,7 +46,10 @@ impl LoginInteractor {
                 warn!("Login attempt with non-existent email: {}", dto.email);
                 AppError::InvalidCredentials
             })?;
-        let is_valid = self.hasher.verify_password(&dto.password, &user.password).await?;
+        let is_valid = self
+            .hasher
+            .verify_password(&dto.password, &user.password)
+            .await?;
         if !is_valid {
             warn!("Invalid password for user: {}", user.username);
             return Err(AppError::InvalidCredentials);
@@ -73,5 +70,27 @@ impl LoginInteractor {
             session_id: session_id.value.to_string(),
             remember_me: dto.remember_me,
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct LogoutInteractor {
+    db_session: Arc<dyn DBSession>,
+    session_writer: Arc<dyn SessionWriter>,
+}
+
+impl LogoutInteractor {
+    pub fn new(db_session: Arc<dyn DBSession>, session_writer: Arc<dyn SessionWriter>) -> Self {
+        Self {
+            db_session,
+            session_writer,
+        }
+    }
+
+    pub async fn execute(&self, session_id: Id<Session>) -> AppResult<()> {
+        self.session_writer.delete(&session_id).await?;
+        self.db_session.commit().await?;
+        info!("Session {} logged out", session_id.value);
+        Ok(())
     }
 }
