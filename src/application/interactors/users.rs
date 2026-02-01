@@ -33,7 +33,6 @@ pub struct CreateUserInteractor {
     hasher: Arc<dyn CredentialsHasher>,
 }
 
-// TODO: Add password hashing
 impl CreateUserInteractor {
     pub fn new(
         db_session: Arc<dyn DBSession>,
@@ -50,13 +49,14 @@ impl CreateUserInteractor {
     pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<IdDTO> {
         let hash = &self.hasher.hash_password(dto.password.as_str()).await?;
         let username = dto.username.clone();
+        let now = Utc::now();
         let user = User {
             id: Id::generate(),
             username: dto.username,
             email: dto.email,
             password: hash.into(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: now,
+            updated_at: now,
         };
         let user_id = match self.user_writer.insert(user).await {
             Ok(id) => id.value.to_string(),
