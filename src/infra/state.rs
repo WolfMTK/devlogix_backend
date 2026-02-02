@@ -1,11 +1,24 @@
-use crate::application::interface::crypto::CredentialsHasher;
-use crate::infra::config::AppConfig;
 use crate::{
-    adapter::db::{gateway::user::UserGateway, session::SqlxSession},
+    adapter::db::{
+        gateway::{
+            session::SessionGateway,
+            user::UserGateway
+        },
+        session::SqlxSession
+    },
     application::{
         app_error::{AppError, AppResult},
-        interactors::users::CreateUserInteractor,
+        interactors::{
+            auth::{LoginInteractor, LogoutInteractor},
+            session::ValidateSessionInteractor,
+            users::{
+                CreateUserInteractor,
+                GetMeInteractor
+            }
+        },
+        interface::crypto::CredentialsHasher,
     },
+    infra::config::AppConfig,
 };
 use async_trait::async_trait;
 use axum::{
@@ -52,5 +65,111 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
         CreateUserInteractor::from_app_state(&app_state).await
+    }
+}
+
+// LoginInteractor
+#[async_trait]
+impl FromAppState for LoginInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let user_gateway = UserGateway::new(session.clone());
+        let session_gateway = SessionGateway::new(session.clone());
+
+        Ok(LoginInteractor::new(
+            Arc::new(session),
+            Arc::new(user_gateway),
+            Arc::new(session_gateway),
+            state.hasher.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for LoginInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        LoginInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetMeInteractor
+#[async_trait]
+impl FromAppState for GetMeInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let user_gateway = Arc::new(UserGateway::new(session));
+
+        Ok(GetMeInteractor::new(user_gateway))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetMeInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        GetMeInteractor::from_app_state(&app_state).await
+    }
+}
+
+// LogoutInteractor
+#[async_trait]
+impl FromAppState for LogoutInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let session_gateway = Arc::new(SessionGateway::new(session.clone()));
+
+        Ok(LogoutInteractor::new(Arc::new(session), session_gateway))
+    }
+}
+
+impl<S> FromRequestParts<S> for LogoutInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        LogoutInteractor::from_app_state(&app_state).await
+    }
+}
+
+// ValidationSessionInteractor
+#[async_trait]
+impl FromAppState for ValidateSessionInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let session_gateway = Arc::new(SessionGateway::new(session.clone()));
+
+        Ok(ValidateSessionInteractor::new(
+            Arc::new(session),
+            session_gateway.clone(),
+            session_gateway,
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for ValidateSessionInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        ValidateSessionInteractor::from_app_state(&app_state).await
     }
 }
