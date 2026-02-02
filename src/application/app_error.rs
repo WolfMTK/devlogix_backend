@@ -1,3 +1,4 @@
+use axum::http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,6 +20,9 @@ pub enum AppError {
 
     #[error("Invalid username or password")]
     InvalidCredentials,
+
+    #[error("Invalid header value: {0}")]
+    InvalidHeader(#[from] InvalidHeaderValue),
 }
 
 pub type AppResult<T> = Result<T, AppError>;

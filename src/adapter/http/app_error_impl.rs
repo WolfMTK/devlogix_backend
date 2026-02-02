@@ -15,6 +15,7 @@ impl IntoResponse for AppError {
             AppError::SessionAlreadyRolledBack => (StatusCode::INTERNAL_SERVER_ERROR, None),
             AppError::PasswordHashError => (StatusCode::INTERNAL_SERVER_ERROR, None),
             AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some("Invalid username or password")),
+            AppError::InvalidHeader(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };
 
         let message = match message {
