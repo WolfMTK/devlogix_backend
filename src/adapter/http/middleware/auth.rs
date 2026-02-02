@@ -1,12 +1,18 @@
-use crate::adapter::http::middleware::extractor::AuthUser;
-use crate::application::app_error::{AppError, AppResult};
-use crate::application::dto::session::{SessionDTO, SessionValidationResult};
-use crate::application::interactors::session::ValidateSessionInteractor;
-use crate::infra::config::{AppConfig, SessionConfig};
-use axum::extract::{Request, State};
-use axum::http::header::SET_COOKIE;
-use axum::middleware::Next;
-use axum::response::Response;
+use crate::{
+    adapter::http::middleware::extractor::AuthUser,
+    application::{
+        app_error::{AppError, AppResult},
+        dto::session::{SessionDTO, SessionValidationResult},
+        interactors::session::ValidateSessionInteractor
+    },
+    infra::config::{AppConfig, SessionConfig}
+};
+use axum::{
+    extract::{Request, State},
+    http::header::SET_COOKIE,
+    middleware::Next,
+    response::Response
+};
 use std::sync::Arc;
 
 #[derive(Clone)]
