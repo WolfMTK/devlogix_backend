@@ -1,3 +1,4 @@
+use crate::adapter::http::routes::auth::login;
 use crate::{
     adapter::http::routes::user::register,
     infra::{config::AppConfig, state::AppState},
@@ -60,8 +61,14 @@ pub fn user_router() -> Router<AppState> {
     Router::new().route("/register", post(register))
 }
 
+pub fn auth_router() -> Router<AppState> {
+    Router::new().route("/login", post(login))
+}
+
 pub fn router() -> Router<AppState> {
-    Router::new().nest("/users", user_router())
+    Router::new()
+        .nest("/users", user_router())
+        .nest("/auth", auth_router())
 }
 
 pub fn create_app(config: &AppConfig, state: AppState) -> Router {

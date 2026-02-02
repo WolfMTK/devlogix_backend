@@ -35,6 +35,12 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
 }
 
+impl FromRef<AppState> for Arc<AppConfig> {
+    fn from_ref(state: &AppState) -> Self {
+        state.config.clone()
+    }
+}
+
 #[async_trait]
 pub trait FromAppState: Sized {
     async fn from_app_state(state: &AppState) -> AppResult<Self>;
