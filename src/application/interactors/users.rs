@@ -1,26 +1,17 @@
 use crate::{
     application::{
-        app_error::{
-            AppError,
-            AppResult
-        },
+        app_error::{AppError, AppResult},
         dto::{
             id::IdDTO,
-            user::{
-                CreateUserDTO,
-                UserDTO
-            },
+            user::{CreateUserDTO, UserDTO},
         },
         interface::{
             crypto::CredentialsHasher,
             db::DBSession,
-            gateway::user::{
-                UserReader,
-                UserWriter
-            },
-        }
+            gateway::user::{UserReader, UserWriter},
+        },
     },
-    domain::entities::{id::Id, user::User}
+    domain::entities::{id::Id, user::User},
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -30,6 +21,7 @@ use tracing::{error, info};
 pub struct CreateUserInteractor {
     db_session: Arc<dyn DBSession>,
     user_writer: Arc<dyn UserWriter>,
+    user_reader: Arc<dyn UserReader>,
     hasher: Arc<dyn CredentialsHasher>,
 }
 
@@ -37,16 +29,25 @@ impl CreateUserInteractor {
     pub fn new(
         db_session: Arc<dyn DBSession>,
         user_writer: Arc<dyn UserWriter>,
+        user_reader: Arc<dyn UserReader>,
         hasher: Arc<dyn CredentialsHasher>,
     ) -> Self {
         Self {
             db_session,
             user_writer,
+            user_reader,
             hasher,
         }
     }
 
     pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<IdDTO> {
+        let is_user = &self
+            .user_reader
+            .is_user(&dto.username.clone(), &dto.email.clone())
+            .await?;
+        if *is_user {
+            return Err(AppError::UserAlreadyExists);
+        }
         let hash = &self.hasher.hash_password(dto.password.as_str()).await?;
         let username = dto.username.clone();
         let now = Utc::now();

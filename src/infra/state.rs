@@ -53,9 +53,11 @@ impl FromAppState for CreateUserInteractor {
         let session = SqlxSession::new_lazy(state.pool.clone());
         let user_gateway = UserGateway::new(session.clone());
 
+        // TODO: think about a better implementation.
         Ok(CreateUserInteractor::new(
             Arc::new(session),
-            Arc::new(user_gateway),
+            Arc::new(user_gateway.clone()),
+            Arc::new(user_gateway.clone()),
             state.hasher.clone(),
         ))
     }
