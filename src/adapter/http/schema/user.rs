@@ -24,7 +24,7 @@ pub struct GetUserResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct UpdateUserRequest {
     pub email: Option<Email>,
     pub username: Option<String>,
