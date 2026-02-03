@@ -3,29 +3,21 @@ use crate::{
         middleware::extractor::AuthUser,
         schema::{
             id::IdResponse,
-            user::{
-                CreateUserRequest,
-                GetUserResponse
-            },
-        }
+            user::{CreateUserRequest, GetUserResponse},
+        },
+        validation::ValidJson,
     },
     application::{
         app_error::AppResult,
-        dto::{
-            id::IdDTO,
-            user::CreateUserDTO
-        },
-        interactors::users::{
-            CreateUserInteractor,
-            GetMeInteractor
-        },
-    }
+        dto::{id::IdDTO, user::CreateUserDTO},
+        interactors::users::{CreateUserInteractor, GetMeInteractor},
+    },
 };
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 
 pub async fn register(
     interactor: CreateUserInteractor,
-    Json(payload): Json<CreateUserRequest>,
+    ValidJson(payload): ValidJson<CreateUserRequest>,
 ) -> AppResult<impl IntoResponse> {
     let dto = CreateUserDTO {
         username: payload.username,

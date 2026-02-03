@@ -1,8 +1,8 @@
 use crate::application::app_error::AppError;
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
@@ -10,10 +10,13 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             AppError::InvalidId(_) => (StatusCode::BAD_REQUEST, None),
-            AppError::InvalidCredentials => (
-                StatusCode::UNAUTHORIZED,
-                Some("Invalid Credentials".to_string()),
-            ),
+            AppError::AxumJsonRejection(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some(self.to_string())),
+            AppError::DatabaseError(_) => (StatusCode::BAD_REQUEST, None),
+            AppError::ValidationError(_) => {
+                let message = format!("Input validation error: [{self}]").replace('\n', ", ");
+                (StatusCode::BAD_REQUEST, Some(message))
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };
 

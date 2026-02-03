@@ -1,4 +1,4 @@
-use axum::http::header::InvalidHeaderValue;
+use axum::{extract::rejection::JsonRejection, http::header::InvalidHeaderValue};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,6 +23,12 @@ pub enum AppError {
 
     #[error("Invalid header value: {0}")]
     InvalidHeader(#[from] InvalidHeaderValue),
+
+    #[error(transparent)]
+    ValidationError(#[from] validator::ValidationErrors),
+
+    #[error("Invalid json")]
+    AxumJsonRejection(#[from] JsonRejection),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
