@@ -3,15 +3,15 @@ use crate::{
     application::{
         app_error::{AppError, AppResult},
         dto::session::{SessionDTO, SessionValidationResult},
-        interactors::session::ValidateSessionInteractor
+        interactors::session::ValidateSessionInteractor,
     },
-    infra::config::{AppConfig, SessionConfig}
+    infra::config::{AppConfig, SessionConfig},
 };
 use axum::{
     extract::{Request, State},
     http::header::SET_COOKIE,
     middleware::Next,
-    response::Response
+    response::Response,
 };
 use std::sync::Arc;
 
@@ -122,4 +122,8 @@ pub fn build_session_cookie(session_id: &str, remember_me: bool, config: &Sessio
         "{}={}; Path=/; Max-Age={}; SameSite=Lax{}{}",
         config.cookie_name, session_id, max_age, secure, http_only
     )
+}
+
+pub fn build_logout_cookie(config: &SessionConfig) -> String {
+    format!("{}=; Path=/; Max-Age=0; SameSite=Lax", config.cookie_name)
 }
