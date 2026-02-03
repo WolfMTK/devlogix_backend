@@ -3,7 +3,7 @@ use crate::{
         app_error::{AppError, AppResult},
         dto::{
             id::IdDTO,
-            user::{CreateUserDTO, UserDTO},
+            user::{CreateUserDTO, UpdateUserDTO, UserDTO},
         },
         interface::{
             crypto::CredentialsHasher,
@@ -102,5 +102,58 @@ impl GetMeInteractor {
             created_at: user.created_at,
             updated_at: user.updated_at,
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct UpdateUserInteractor {
+    db_session: Arc<dyn DBSession>,
+    user_writer: Arc<dyn UserWriter>,
+    user_reader: Arc<dyn UserReader>,
+    hasher: Arc<dyn CredentialsHasher>,
+}
+
+impl UpdateUserInteractor {
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        user_writer: Arc<dyn UserWriter>,
+        user_reader: Arc<dyn UserReader>,
+        hasher: Arc<dyn CredentialsHasher>,
+    ) -> Self {
+        Self {
+            db_session,
+            user_writer,
+            user_reader,
+            hasher,
+        }
+    }
+
+    pub async fn execute(&self, dto: UpdateUserDTO) -> AppResult<()> {
+        let user_id: Id<User> = dto.id.try_into()?;
+        let is_username_or_email = &self
+            .user_reader
+            .is_username_or_email_unique(&user_id, dto.username.as_deref(), dto.email.as_deref())
+            .await?;
+        if *is_username_or_email {
+            return Err(AppError::UserAlreadyExists);
+        }
+        let user = self.user_reader.find_by_id(&user_id).await?;
+        match user {
+            Some(mut user) => {
+                if let Some(username) = dto.username {
+                    user.username = username;
+                }
+                if let Some(email) = dto.email {
+                    user.email = email;
+                }
+                if let Some(password) = dto.password {
+                    let hash = &self.hasher.hash_password(password.as_str()).await?;
+                    user.password = hash.into();
+                }
+                let _ = &self.user_writer.update(user).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
     }
 }
