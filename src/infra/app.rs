@@ -1,15 +1,20 @@
 use crate::adapter::http::middleware::auth::auth_middleware;
-use crate::adapter::http::routes::auth::login;
+use crate::adapter::http::routes::auth::{login, logout};
 use crate::adapter::http::routes::user::get_me;
 use crate::{
     adapter::http::routes::user::register,
     infra::{config::AppConfig, state::AppState},
 };
 use axum::routing::get;
-use axum::{http::{
-    self,
-    header::{AUTHORIZATION, CONTENT_TYPE},
-}, middleware, routing::post, Router};
+use axum::{
+    http::{
+        self,
+        header::{AUTHORIZATION, CONTENT_TYPE},
+    },
+    middleware,
+    routing::post,
+    Router,
+};
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
@@ -58,23 +63,28 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 
 pub fn user_router(state: AppState) -> Router<AppState> {
     Router::new().route("/register", post(register)).route(
-        "/me", get(get_me).route_layer(
-            middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware
-            )
-        )
+        "/me",
+        get(get_me).route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        )),
     )
 }
 
-pub fn auth_router() -> Router<AppState> {
-    Router::new().route("/login", post(login))
+pub fn auth_router(state: AppState) -> Router<AppState> {
+    Router::new().route("/login", post(login)).route(
+        "/logout",
+        post(logout).route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        )),
+    )
 }
 
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .nest("/users", user_router(state.clone()))
-        .nest("/auth", auth_router())
+        .nest("/auth", auth_router(state.clone()))
 }
 
 pub fn create_app(config: &AppConfig, state: AppState) -> Router {
