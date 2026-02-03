@@ -2,13 +2,18 @@ use crate::{
     application::{
         app_error::{AppError, AppResult},
         dto::auth::{GetSessionIdDTO, LoginDTO},
+        dto::id::IdDTO,
         interface::{
             crypto::CredentialsHasher,
             db::DBSession,
             gateway::{session::SessionWriter, user::UserReader},
-        },
+        }
     },
-    domain::entities::{id::Id, session::Session},
+    domain::entities::{
+        id::Id,
+        session::Session,
+        user::User
+    }
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -87,10 +92,11 @@ impl LogoutInteractor {
         }
     }
 
-    pub async fn execute(&self, session_id: Id<Session>) -> AppResult<()> {
-        self.session_writer.delete(&session_id).await?;
+    pub async fn execute(&self, user_id: IdDTO) -> AppResult<()> {
+        let user_id: Id<User> = user_id.id.try_into()?;
+        self.session_writer.delete_by_user_id(&user_id).await?;
         self.db_session.commit().await?;
-        info!("Session {} logged out", session_id.value);
+        info!("User {} logged out", user_id.value);
         Ok(())
     }
 }
