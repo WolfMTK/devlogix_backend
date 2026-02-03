@@ -1,10 +1,7 @@
 use crate::{
     adapter::db::{
-        gateway::{
-            session::SessionGateway,
-            user::UserGateway
-        },
-        session::SqlxSession
+        gateway::{session::SessionGateway, user::UserGateway},
+        session::SqlxSession,
     },
     application::{
         app_error::{AppError, AppResult},
@@ -13,12 +10,13 @@ use crate::{
             session::ValidateSessionInteractor,
             users::{
                 CreateUserInteractor,
-                GetMeInteractor
-            }
+                GetMeInteractor,
+                UpdateUserInteractor
+            },
         },
-        interface::crypto::CredentialsHasher,
+        interface::crypto::CredentialsHasher
     },
-    infra::config::AppConfig,
+    infra::config::AppConfig
 };
 use async_trait::async_trait;
 use axum::{
@@ -179,5 +177,34 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
         ValidateSessionInteractor::from_app_state(&app_state).await
+    }
+}
+
+// UpdateUserInteractor
+#[async_trait]
+impl FromAppState for UpdateUserInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let user_gateway = UserGateway::new(session.clone());
+
+        Ok(UpdateUserInteractor::new(
+            Arc::new(session),
+            Arc::new(user_gateway.clone()),
+            Arc::new(user_gateway.clone()),
+            state.hasher.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for UpdateUserInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        UpdateUserInteractor::from_app_state(&app_state).await
     }
 }
