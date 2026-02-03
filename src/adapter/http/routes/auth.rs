@@ -1,4 +1,3 @@
-use crate::application::dto::id::IdDTO;
 use crate::{
     adapter::http::{
         middleware::{
@@ -12,11 +11,14 @@ use crate::{
     },
     application::{
         app_error::AppResult,
-        dto::auth::LoginDTO,
+        dto::{
+            auth::LoginDTO,
+            id::IdDTO
+        },
         interactors::auth::{
             LoginInteractor,
             LogoutInteractor
-        },
+        }
     },
     infra::config::AppConfig
 };
