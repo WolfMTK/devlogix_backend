@@ -15,3 +15,12 @@ pub struct UserDTO {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+
+#[derive(Debug, Clone)]
+pub struct UpdateUserDTO {
+    pub id: String,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub password: Option<String>,
+}
