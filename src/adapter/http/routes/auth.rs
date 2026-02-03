@@ -1,12 +1,23 @@
+use crate::application::dto::id::IdDTO;
 use crate::{
     adapter::http::{
-        middleware::auth::build_session_cookie,
-        schema::auth::{
-            LoginRequest,
-            MessageResponse
+        middleware::{
+            auth::{
+                build_logout_cookie,
+                build_session_cookie
+            },
+            extractor::AuthUser
+        },
+        schema::auth::{LoginRequest, MessageResponse}
+    },
+    application::{
+        app_error::AppResult,
+        dto::auth::LoginDTO,
+        interactors::auth::{
+            LoginInteractor,
+            LogoutInteractor
         },
     },
-    application::{app_error::AppResult, dto::auth::LoginDTO, interactors::auth::LoginInteractor},
     infra::config::AppConfig
 };
 use axum::{
@@ -36,6 +47,27 @@ pub async fn login(
         headers,
         Json(MessageResponse {
             message: "Login successful".to_string(),
+        }),
+    ))
+}
+
+pub async fn logout(
+    auth_user: AuthUser,
+    interactor: LogoutInteractor,
+    State(config): State<Arc<AppConfig>>,
+) -> AppResult<impl IntoResponse> {
+    let cookie = build_logout_cookie(&config.session);
+    let dto = IdDTO {
+        id: auth_user.user_id,
+    };
+    interactor.execute(dto).await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie)?);
+    Ok((
+        StatusCode::OK,
+        headers,
+        Json(MessageResponse {
+            message: "Logged out successfully".to_string(),
         }),
     ))
 }
