@@ -12,7 +12,7 @@ impl IntoResponse for AppError {
             AppError::InvalidId(_) => (StatusCode::BAD_REQUEST, None),
             AppError::InvalidCredentials => (
                 StatusCode::UNAUTHORIZED,
-                Some("Invalid username or password".to_string()),
+                Some("Invalid Credentials".to_string()),
             ),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };

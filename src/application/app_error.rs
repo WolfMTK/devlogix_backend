@@ -18,7 +18,7 @@ pub enum AppError {
     #[error("Failed to hash password")]
     PasswordHashError,
 
-    #[error("Invalid username or password")]
+    #[error("Invalid Credentials")]
     InvalidCredentials,
 
     #[error("Invalid header value: {0}")]
