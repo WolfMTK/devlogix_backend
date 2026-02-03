@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_email::Email;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUserRequest {
     pub username: String,
-    pub email: String,
+    pub email: Email,
     pub password: String,
 }
 

@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_email::Email;
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub email: String,
+    pub email: Email,
     pub password: String,
     pub remember_me: bool,
 }
