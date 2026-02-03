@@ -11,10 +11,13 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::postgres::PgRow;
-use sqlx::Row;
+use sqlx::{
+    postgres::PgRow,
+    Row
+};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct UserGateway {
     session: SqlxSession,
 }
@@ -96,6 +99,32 @@ impl UserReader for UserGateway {
                 .boxed()
             })
             .await
+    }
+
+    async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
+        self.session.with_tx(|tx| {
+            let username = username.to_owned();
+            let email = email.to_owned();
+            async move {
+                let result = sqlx::query(
+                    r#"
+                        SELECT EXISTS(
+                            SELECT
+                                id
+                            FROM
+                                users
+                            WHERE username = $1 OR email = $2
+                        ) AS is_user
+                    "#
+                )
+                    .bind(username)
+                    .bind(email)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+                let is_user: bool = result.try_get("is_user")?;
+                Ok(is_user)
+            }.boxed()
+        }).await
     }
 
     async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
