@@ -2,19 +2,13 @@ use crate::{
     adapter::db::session::SqlxSession,
     application::{
         app_error::AppResult,
-        interface::gateway::user::{
-            UserReader,
-            UserWriter
-        }
+        interface::gateway::user::{UserReader, UserWriter},
     },
-    domain::entities::{id::Id, user::User}
+    domain::entities::{id::Id, user::User},
 };
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::{
-    postgres::PgRow,
-    Row
-};
+use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -53,16 +47,49 @@ impl UserWriter for UserGateway {
                         r#"
                             INSERT INTO users
                                 (id, username, email, password, created_at, updated_at)
-                            VALUES ($1, $2, $3, $4, $5, $6)
-                            RETURNING id
+                            VALUES
+                                ($1, $2, $3, $4, $5, $6)
+                            RETURNING
+                                id
                         "#,
                     )
-                    .bind(user.id.value)
+                    .bind(&user.id.value)
                     .bind(&user.username)
                     .bind(&user.email)
                     .bind(&user.password)
                     .bind(&user.created_at)
                     .bind(&user.updated_at)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+                    let id: Uuid = result.try_get("id")?;
+                    Ok(Id::new(id))
+                }
+                .boxed()
+            })
+            .await
+    }
+
+    async fn update(&self, user: User) -> AppResult<Id<User>> {
+        self.session
+            .with_tx(|tx| {
+                let user = user.clone();
+                async move {
+                    let result = sqlx::query(
+                        r#"
+                            UPDATE
+                                users
+                            SET
+                                username = $2, email = $3, password = $4
+                            WHERE
+                                id = $1
+                            RETURNING
+                                id
+                        "#,
+                    )
+                    .bind(&user.id.value)
+                    .bind(&user.username)
+                    .bind(&user.email)
+                    .bind(&user.password)
                     .fetch_one(tx.as_mut())
                     .await?;
                     let id: Uuid = result.try_get("id")?;
@@ -102,29 +129,32 @@ impl UserReader for UserGateway {
     }
 
     async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
-        self.session.with_tx(|tx| {
-            let username = username.to_owned();
-            let email = email.to_owned();
-            async move {
-                let result = sqlx::query(
-                    r#"
-                        SELECT EXISTS(
-                            SELECT
-                                id
-                            FROM
-                                users
-                            WHERE username = $1 OR email = $2
-                        ) AS is_user
-                    "#
-                )
-                    .bind(username)
-                    .bind(email)
+        self.session
+            .with_tx(|tx| {
+                let username = username.to_owned();
+                let email = email.to_owned();
+                async move {
+                    let result = sqlx::query(
+                        r#"
+                            SELECT EXISTS(
+                                SELECT
+                                    id
+                                FROM
+                                    users
+                                WHERE username = $1 OR email = $2
+                            ) AS is_user
+                        "#,
+                    )
+                    .bind(&username)
+                    .bind(&email)
                     .fetch_one(tx.as_mut())
                     .await?;
-                let is_user: bool = result.try_get("is_user")?;
-                Ok(is_user)
-            }.boxed()
-        }).await
+                    let is_user: bool = result.try_get("is_user")?;
+                    Ok(is_user)
+                }
+                .boxed()
+            })
+            .await
     }
 
     async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
@@ -141,11 +171,48 @@ impl UserReader for UserGateway {
                             WHERE id = $1
                         "#,
                     )
-                    .bind(user_id)
+                    .bind(&user_id)
                     .fetch_optional(tx.as_mut())
                     .await?;
 
                     Self::find_user(result)
+                }
+                .boxed()
+            })
+            .await
+    }
+
+    async fn is_username_or_email_unique(
+        &self,
+        user_id: &Id<User>,
+        username: &str,
+        email: &str,
+    ) -> AppResult<bool> {
+        self.session
+            .with_tx(|tx| {
+                let user_id = user_id.value;
+                let username = username.to_owned();
+                let email = email.to_owned();
+                async move {
+                    let result = sqlx::query(
+                        r#"
+                            SELECT EXISTS (
+                                SELECT
+                                    id
+                                FROM
+                                    users
+                                WHERE
+                                    id <> $1 AND (username = $2 OR email = $3)  
+                            ) AS is_user
+                        "#,
+                    )
+                    .bind(&user_id)
+                    .bind(&username)
+                    .bind(&email)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+                    let is_user: bool = result.try_get("is_user")?;
+                    Ok(is_user)
                 }
                 .boxed()
             })
