@@ -29,7 +29,7 @@ pub async fn register(
 ) -> AppResult<impl IntoResponse> {
     let dto = CreateUserDTO {
         username: payload.username,
-        email: payload.email,
+        email: payload.email.to_string(),
         password: payload.password,
     };
     let user_id = interactor.execute(dto).await?;

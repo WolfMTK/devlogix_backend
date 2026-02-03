@@ -2,25 +2,27 @@ use crate::application::app_error::AppError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json
+    Json,
 };
 use serde_json::json;
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            AppError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
             AppError::InvalidId(_) => (StatusCode::BAD_REQUEST, None),
-            AppError::SessionAlreadyCommitted => (StatusCode::INTERNAL_SERVER_ERROR, None),
-            AppError::SessionAlreadyRolledBack => (StatusCode::INTERNAL_SERVER_ERROR, None),
-            AppError::PasswordHashError => (StatusCode::INTERNAL_SERVER_ERROR, None),
-            AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some("Invalid username or password")),
-            AppError::InvalidHeader(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
+            AppError::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                Some("Invalid username or password".to_string()),
+            ),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };
 
         let message = match message {
             Some(msg) => msg,
-            None => status.canonical_reason().unwrap_or_else(|| "Unknown error"),
+            None => status
+                .canonical_reason()
+                .unwrap_or_else(|| "Unknown error")
+                .to_string(),
         };
 
         let body = Json(json!({

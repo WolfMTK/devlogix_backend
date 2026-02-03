@@ -23,7 +23,7 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> AppResult<impl IntoResponse> {
     let dto = LoginDTO {
-        email: payload.email,
+        email: payload.email.to_string(),
         password: payload.password,
         remember_me: payload.remember_me,
     };

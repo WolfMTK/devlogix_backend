@@ -1,9 +1,17 @@
-use crate::application::app_error::AppResult;
-use crate::application::dto::session::{GetSessionStatusDTO, SessionDTO, SessionValidationResult};
-use crate::application::interface::db::DBSession;
-use crate::application::interface::gateway::session::{SessionReader, SessionWriter};
-use crate::domain::entities::id::Id;
-use crate::domain::entities::session::Session;
+use crate::{
+    application::{
+        app_error::AppResult,
+        dto::session::{GetSessionStatusDTO, SessionDTO, SessionValidationResult},
+        interface::{
+            db::DBSession,
+            gateway::session::{SessionReader, SessionWriter}
+        },
+    },
+    domain::entities::{
+        id::Id,
+        session::Session
+    }
+};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 
@@ -13,7 +21,6 @@ struct SessionTimeouts {
     pub default_idle_timeout: i64,
     pub remembered_max_lifetime: i64,
     pub remembered_idle_timeout: i64,
-    pub rotation_interval: i64,
 }
 
 #[derive(Clone)]
@@ -65,7 +72,6 @@ impl ValidateSessionInteractor {
             default_idle_timeout: dto.default_idle_timeout,
             remembered_max_lifetime: dto.remembered_max_lifetime,
             remembered_idle_timeout: dto.remembered_idle_timeout,
-            rotation_interval: dto.rotation_interval,
         };
         let (max_lifetime, idle_timeout) = Self::get_timeouts(timeouts, session.remember_me);
 

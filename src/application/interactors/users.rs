@@ -84,7 +84,7 @@ impl GetMeInteractor {
         Self { user_reader }
     }
 
-    pub async fn execute(&self, dto: IdDTO) -> AppResult<(UserDTO)> {
+    pub async fn execute(&self, dto: IdDTO) -> AppResult<UserDTO> {
         let user_id: Id<User> = dto.id.try_into()?;
         let user = self
             .user_reader
