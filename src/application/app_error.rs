@@ -29,6 +29,9 @@ pub enum AppError {
 
     #[error("Invalid json")]
     AxumJsonRejection(#[from] JsonRejection),
+
+    #[error("User already exists")]
+    UserAlreadyExists,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
