@@ -1,19 +1,29 @@
-use crate::adapter::http::middleware::auth::auth_middleware;
-use crate::adapter::http::routes::auth::{login, logout};
-use crate::adapter::http::routes::user::get_me;
 use crate::{
-    adapter::http::routes::user::register,
-    infra::{config::AppConfig, state::AppState},
+    adapter::http::{
+        middleware::auth::auth_middleware,
+        routes::{
+            auth::{login, logout},
+            user::{
+                get_me,
+                register,
+                update_user
+            }
+        }
+    },
+    infra::{config::AppConfig, state::AppState}
 };
-use axum::routing::get;
 use axum::{
     http::{
         self,
         header::{AUTHORIZATION, CONTENT_TYPE},
     },
     middleware,
-    routing::post,
-    Router,
+    routing::{
+        get,
+        patch,
+        post
+    },
+    Router
 };
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -62,23 +72,30 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 pub fn user_router(state: AppState) -> Router<AppState> {
-    Router::new().route("/register", post(register)).route(
-        "/me",
-        get(get_me).route_layer(middleware::from_fn_with_state(
+    let public_routes = Router::new().route("/register", post(register));
+
+    let protected_routes = Router::new()
+        .route("/me", get(get_me))
+        .route("/", patch(update_user))
+        .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
-        )),
-    )
+        ));
+
+    Router::new().merge(public_routes).merge(protected_routes)
 }
 
 pub fn auth_router(state: AppState) -> Router<AppState> {
-    Router::new().route("/login", post(login)).route(
-        "/logout",
-        post(logout).route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        )),
-    )
+    let public_routes = Router::new().route("/login", post(login));
+
+    let protected_routes =
+        Router::new()
+            .route("/logout", post(logout))
+            .route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth_middleware,
+            ));
+    Router::new().merge(public_routes).merge(protected_routes)
 }
 
 pub fn router(state: AppState) -> Router<AppState> {
