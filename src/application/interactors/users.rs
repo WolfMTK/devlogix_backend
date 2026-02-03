@@ -41,21 +41,21 @@ impl CreateUserInteractor {
     }
 
     pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<IdDTO> {
-        let is_user = &self
+        let is_user = self
             .user_reader
             .is_user(&dto.username.clone(), &dto.email.clone())
             .await?;
-        if *is_user {
+        if is_user {
             return Err(AppError::UserAlreadyExists);
         }
-        let hash = &self.hasher.hash_password(dto.password.as_str()).await?;
+        let hash = self.hasher.hash_password(dto.password.as_str()).await?;
         let username = dto.username.clone();
         let now = Utc::now();
         let user = User {
             id: Id::generate(),
             username: dto.username,
             email: dto.email,
-            password: hash.into(),
+            password: hash,
             created_at: now,
             updated_at: now,
         };
@@ -130,11 +130,12 @@ impl UpdateUserInteractor {
 
     pub async fn execute(&self, dto: UpdateUserDTO) -> AppResult<()> {
         let user_id: Id<User> = dto.id.try_into()?;
-        let is_username_or_email = &self
+
+        let is_username_or_email = self
             .user_reader
             .is_username_or_email_unique(&user_id, dto.username.as_deref(), dto.email.as_deref())
             .await?;
-        if *is_username_or_email {
+        if is_username_or_email {
             return Err(AppError::UserAlreadyExists);
         }
         let user = self.user_reader.find_by_id(&user_id).await?;
@@ -147,10 +148,11 @@ impl UpdateUserInteractor {
                     user.email = email;
                 }
                 if let Some(password) = dto.password {
-                    let hash = &self.hasher.hash_password(password.as_str()).await?;
-                    user.password = hash.into();
+                    let hash = self.hasher.hash_password(password.as_str()).await?;
+                    user.password = hash;
                 }
-                let _ = &self.user_writer.update(user).await?;
+                self.user_writer.update(user).await?;
+                self.db_session.commit().await?;
                 Ok(())
             }
             None => Ok(()),
