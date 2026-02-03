@@ -185,14 +185,14 @@ impl UserReader for UserGateway {
     async fn is_username_or_email_unique(
         &self,
         user_id: &Id<User>,
-        username: &str,
-        email: &str,
+        username: Option<&str>,
+        email: Option<&str>,
     ) -> AppResult<bool> {
         self.session
             .with_tx(|tx| {
                 let user_id = user_id.value;
-                let username = username.to_owned();
-                let email = email.to_owned();
+                let username = username.map(String::from);
+                let email = email.map(String::from);
                 async move {
                     let result = sqlx::query(
                         r#"
@@ -202,7 +202,11 @@ impl UserReader for UserGateway {
                                 FROM
                                     users
                                 WHERE
-                                    id <> $1 AND (username = $2 OR email = $3)  
+                                    id <> $1
+                                  AND (
+                                      ($2 IS NOT NULL AND username = $2)
+                                          OR ($3 IS NOT NULL AND email = $3)
+                                  )
                             ) AS is_user
                         "#,
                     )

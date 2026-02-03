@@ -18,7 +18,7 @@ pub trait UserReader: Send + Sync {
     async fn is_username_or_email_unique(
         &self,
         user_id: &Id<User>,
-        username: &str,
-        email: &str,
+        username: Option<&str>,
+        email: Option<&str>,
     ) -> AppResult<bool>;
 }
