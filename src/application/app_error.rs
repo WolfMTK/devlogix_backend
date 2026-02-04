@@ -32,6 +32,15 @@ pub enum AppError {
 
     #[error("User already exists")]
     UserAlreadyExists,
+    
+    #[error("Passwords does not match")]
+    InvalidPassword,
+    
+    #[error("The old password field is empty")]
+    OldPasswordEmpty,
+    
+    #[error("The old password is incorrect")]
+    InvalidOldPassword,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
