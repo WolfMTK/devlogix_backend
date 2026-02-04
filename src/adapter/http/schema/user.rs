@@ -12,7 +12,8 @@ pub struct CreateUserRequest {
     ))]
     pub username: String,
     pub email: Email,
-    pub password: ValidPassword,
+    pub password1: ValidPassword,
+    pub password2: ValidPassword,
 }
 
 #[derive(Debug, Serialize)]
@@ -28,7 +29,9 @@ pub struct GetUserResponse {
 pub struct UpdateUserRequest {
     pub email: Option<Email>,
     pub username: Option<String>,
-    pub password: Option<ValidPassword>,
+    pub old_password: Option<ValidPassword>,
+    pub password1: Option<ValidPassword>,
+    pub password2: Option<ValidPassword>,
 }
 
 #[derive(Debug, Validate, Deserialize)]

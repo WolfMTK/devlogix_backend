@@ -26,7 +26,8 @@ pub async fn register(
     let dto = CreateUserDTO {
         username: payload.username,
         email: payload.email.to_string(),
-        password: payload.password.value().to_string(),
+        password1: payload.password1.value().to_string(),
+        password2: payload.password2.value().to_string(),
     };
     let user_id = interactor.execute(dto).await?;
     let response = IdResponse { id: user_id.id };
@@ -60,8 +61,14 @@ pub async fn update_user(
         id: auth_user.user_id,
         username: payload.username,
         email: payload.email.map(|email| email.to_string()),
-        password: payload
-            .password
+        old_password: payload
+            .old_password
+            .map(|password| password.value().to_string()),
+        password1: payload
+            .password1
+            .map(|password| password.value().to_string()),
+        password2: payload
+            .password2
             .map(|password| password.value().to_string()),
     };
     interactor.execute(dto).await?;
