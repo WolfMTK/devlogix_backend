@@ -1,13 +1,12 @@
 use crate::{
     adapter::http::{
-        middleware::auth::auth_middleware,
+        middleware::auth::{
+            auth_middleware,
+            session_cookie_middleware
+        },
         routes::{
             auth::{login, logout},
-            user::{
-                get_me,
-                register,
-                update_user
-            }
+            user::{get_me, register, update_user},
         }
     },
     infra::{config::AppConfig, state::AppState}
@@ -18,12 +17,8 @@ use axum::{
         header::{AUTHORIZATION, CONTENT_TYPE},
     },
     middleware,
-    routing::{
-        get,
-        patch,
-        post
-    },
-    Router
+    routing::{get, patch, post},
+    Router,
 };
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -79,6 +74,10 @@ pub fn user_router(state: AppState) -> Router<AppState> {
         .route("/", patch(update_user))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
+            session_cookie_middleware,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
             auth_middleware,
         ));
 
@@ -88,13 +87,16 @@ pub fn user_router(state: AppState) -> Router<AppState> {
 pub fn auth_router(state: AppState) -> Router<AppState> {
     let public_routes = Router::new().route("/login", post(login));
 
-    let protected_routes =
-        Router::new()
-            .route("/logout", post(logout))
-            .route_layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            ));
+    let protected_routes = Router::new()
+        .route("/logout", post(logout))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session_cookie_middleware,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
     Router::new().merge(public_routes).merge(protected_routes)
 }
 
