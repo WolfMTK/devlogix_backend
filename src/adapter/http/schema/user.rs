@@ -93,8 +93,9 @@ fn has_special_char(password: &str) -> Result<(), ValidationError> {
 #[cfg(test)]
 mod tests {
     use crate::adapter::http::schema::user::ValidPassword;
+    use rstest::rstest;
 
-    #[test]
+    #[rstest]
     fn test_valid_password_success() {
         let passwords = vec![
             "Password123!",
@@ -103,48 +104,35 @@ mod tests {
             "Test123$",
             "P@!s0Word",
         ];
-        let all_valid = passwords.iter().all(|&password| {
-            ValidPassword::new(password.to_owned()).is_ok()
-        });
+        let all_valid = passwords
+            .iter()
+            .all(|&password| ValidPassword::new(password.to_owned()).is_ok());
         assert!(all_valid, "All passwords should be valid")
     }
 
-    #[test]
-    fn test_password_to_short() {
-        let password = "Pass1!";
+    #[rstest]
+    #[case("Pass1!", "too short")]
+    #[case("password123!", "no uppercase")]
+    #[case("Password!", "no digit")]
+    #[case("Password123", "no special char")]
+    fn test_password_invalid(#[case] password: &str, #[case] message: &str) {
         let result = ValidPassword::new(password.to_owned());
-        assert!(result.is_err(), "Password `{}` should fail (too short)", password);
+        assert!(
+            result.is_err(),
+            "Password `{}` should fail ({})",
+            password,
+            message
+        )
     }
 
-    #[test]
-    fn test_password_no_uppercase() {
-        let password = "password123!";
-        let result = ValidPassword::new(password.to_owned());
-        assert!(result.is_err(), "Password `{}` should fail (no uppercase)", password);
-    }
-
-    #[test]
-    fn test_password_no_digit() {
-        let password = "Password!";
-        let result = ValidPassword::new(password.to_owned());
-        assert!(result.is_err(), "Password `{}` should fail (no digit)", password);
-    }
-
-    #[test]
-    fn test_password_no_special_char() {
-        let password = "Password123";
-        let result = ValidPassword::new(password.to_owned());
-        assert!(result.is_err(), "Password `{}` should fail (no special char)", password);
-    }
-
-    #[test]
+    #[rstest]
     fn test_password_value_getter() {
         let password = "Password123!";
         let result = ValidPassword::new(password.to_owned());
         assert_eq!(result.unwrap().value, password);
     }
 
-    #[test]
+    #[rstest]
     fn test_password_unicode_characters() {
         let password = "Пароль123!";
         let result = ValidPassword::new(password.to_owned());
