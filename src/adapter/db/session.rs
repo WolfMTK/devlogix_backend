@@ -13,7 +13,6 @@ pub enum SessionState {
     Fresh,
     Active,
     Committed,
-    RolledBack,
 }
 
 struct SessionInner {
@@ -28,18 +27,6 @@ pub struct SqlxSession {
 }
 
 impl SqlxSession {
-    pub async fn new(pool: Pool<Postgres>) -> AppResult<Self> {
-        let tx = pool.begin().await?;
-
-        Ok(Self {
-            inner: Arc::new(Mutex::new(SessionInner {
-                pool,
-                transaction: Some(tx),
-                state: SessionState::Active,
-            })),
-        })
-    }
-
     pub fn new_lazy(pool: Pool<Postgres>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(SessionInner {
@@ -48,19 +35,6 @@ impl SqlxSession {
                 state: SessionState::Fresh,
             })),
         }
-    }
-
-    pub async fn begin(&self) -> AppResult<()> {
-        let mut inner = self.inner.lock().await;
-
-        Self::ensure_usable(&inner)?;
-
-        if inner.transaction.is_none() {
-            let tx = inner.pool.begin().await?;
-            inner.transaction = Some(tx);
-            inner.state = SessionState::Active;
-        }
-        Ok(())
     }
 
     pub async fn with_tx<F, T>(&self, f: F) -> AppResult<T>
@@ -87,14 +61,9 @@ impl SqlxSession {
         f(tx).await
     }
 
-    pub async fn state(&self) -> SessionState {
-        self.inner.lock().await.state
-    }
-
     fn ensure_usable(inner: &SessionInner) -> AppResult<()> {
         match inner.state {
             SessionState::Committed => Err(AppError::SessionAlreadyCommitted),
-            SessionState::RolledBack => Err(AppError::SessionAlreadyRolledBack),
             _ => Ok(()),
         }
     }
@@ -111,19 +80,6 @@ impl DBSession for SqlxSession {
             tx.commit().await?;
         }
         inner.state = SessionState::Committed;
-
-        Ok(())
-    }
-
-    async fn rollback(&self) -> AppResult<()> {
-        let mut inner = self.inner.lock().await;
-
-        Self::ensure_usable(&inner)?;
-
-        if let Some(tx) = inner.transaction.take() {
-            tx.rollback().await?;
-        }
-        inner.state = SessionState::RolledBack;
 
         Ok(())
     }
