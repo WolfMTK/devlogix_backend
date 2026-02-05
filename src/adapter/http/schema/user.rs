@@ -89,3 +89,65 @@ fn has_special_char(password: &str) -> Result<(), ValidationError> {
     }
     Err(ValidationError::new("password_no_special_char"))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::adapter::http::schema::user::ValidPassword;
+
+    #[test]
+    fn test_valid_password_success() {
+        let passwords = vec![
+            "Password123!",
+            "MyP@ssw0rd",
+            "Pa0!Pass",
+            "Test123$",
+            "P@!s0Word",
+        ];
+        let all_valid = passwords.iter().all(|&password| {
+            ValidPassword::new(password.to_owned()).is_ok()
+        });
+        assert!(all_valid, "All passwords should be valid")
+    }
+
+    #[test]
+    fn test_password_to_short() {
+        let password = "Pass1!";
+        let result = ValidPassword::new(password.to_owned());
+        assert!(result.is_err(), "Password `{}` should fail (too short)", password);
+    }
+
+    #[test]
+    fn test_password_no_uppercase() {
+        let password = "password123!";
+        let result = ValidPassword::new(password.to_owned());
+        assert!(result.is_err(), "Password `{}` should fail (no uppercase)", password);
+    }
+
+    #[test]
+    fn test_password_no_digit() {
+        let password = "Password!";
+        let result = ValidPassword::new(password.to_owned());
+        assert!(result.is_err(), "Password `{}` should fail (no digit)", password);
+    }
+
+    #[test]
+    fn test_password_no_special_char() {
+        let password = "Password123";
+        let result = ValidPassword::new(password.to_owned());
+        assert!(result.is_err(), "Password `{}` should fail (no special char)", password);
+    }
+
+    #[test]
+    fn test_password_value_getter() {
+        let password = "Password123!";
+        let result = ValidPassword::new(password.to_owned());
+        assert_eq!(result.unwrap().value, password);
+    }
+
+    #[test]
+    fn test_password_unicode_characters() {
+        let password = "Пароль123!";
+        let result = ValidPassword::new(password.to_owned());
+        assert!(result.is_err());
+    }
+}
