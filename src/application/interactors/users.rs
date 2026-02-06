@@ -51,6 +51,7 @@ impl CreateUserInteractor {
             username: dto.username,
             email: dto.email,
             password: hash,
+            is_confirmed: false,
             created_at: now,
             updated_at: now,
         };

@@ -28,6 +28,7 @@ impl UserGateway {
                 username: row.try_get("username")?,
                 email: row.try_get("email")?,
                 password: row.try_get("password")?,
+                is_confirmed: row.try_get("is_confirmed")?,
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })),
@@ -111,7 +112,7 @@ impl UserReader for UserGateway {
                     let result = sqlx::query(
                         r#"
                             SELECT 
-                                id, username, email, password, created_at, updated_at
+                                id, username, email, password, is_confirmed, created_at, updated_at
                             FROM 
                                 users
                             WHERE email = $1
@@ -165,7 +166,7 @@ impl UserReader for UserGateway {
                     let result = sqlx::query(
                         r#"
                             SELECT
-                                id, username, email, password, created_at, updated_at
+                                id, username, email, password, is_confirmed, created_at, updated_at
                             FROM
                                 users
                             WHERE id = $1

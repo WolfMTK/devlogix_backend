@@ -7,6 +7,7 @@ pub struct User {
     pub username: String,
     pub email: String,
     pub password: String,
+    pub is_confirmed: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
