@@ -14,7 +14,9 @@ impl IntoResponse for AppError {
             AppError::UserAlreadyExists => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::DatabaseError(_) => (StatusCode::BAD_REQUEST, None),
             AppError::ValidationError(_) => {
-                let message = format!("Input validation error: [{self}]").replace('\n', ", ");
+                let message = format!("Input validation error: [{self}]")
+                    .replace("\n", ", ")
+                    .replace(".value", "");
                 (StatusCode::BAD_REQUEST, Some(message))
             }
             AppError::InvalidPassword => (StatusCode::BAD_REQUEST, Some(self.to_string())),
