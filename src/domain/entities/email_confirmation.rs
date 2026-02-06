@@ -3,12 +3,12 @@ use chrono::{DateTime, Duration, Utc};
 
 #[derive(Debug, Clone)]
 pub struct EmailConfirmation {
-    id: Id<EmailConfirmation>,
-    user_id: Id<User>,
-    token: String,
-    expires_at: DateTime<Utc>,
-    confirmed_at: Option<DateTime<Utc>>,
-    created_at: DateTime<Utc>,
+    pub id: Id<EmailConfirmation>,
+    pub user_id: Id<User>,
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+    pub confirmed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl EmailConfirmation {
