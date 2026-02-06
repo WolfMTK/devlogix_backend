@@ -30,11 +30,18 @@ pub struct SessionConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailConfirmationConfig {
+    pub ttl: i64,
+    pub confirmation_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
     pub application: ApplicationConfig,
     pub session: SessionConfig,
+    pub email_confirmation: EmailConfirmationConfig,
 }
 
 impl AppConfig {
