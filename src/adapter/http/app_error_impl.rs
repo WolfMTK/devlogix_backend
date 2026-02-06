@@ -1,14 +1,15 @@
 use crate::application::app_error::AppError;
 use axum::{
-    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use serde_json::json;
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
+            // BAD REQUEST
             AppError::InvalidId(_) => (StatusCode::BAD_REQUEST, None),
             AppError::AxumJsonRejection(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::UserAlreadyExists => (StatusCode::BAD_REQUEST, Some(self.to_string())),
@@ -22,8 +23,19 @@ impl IntoResponse for AppError {
             AppError::InvalidPassword => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::OldPasswordEmpty => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::InvalidOldPassword => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidConfirmationToken => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::ConfirmationTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+
+            // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
+
+            // UNAUTHORIZED
             AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some(self.to_string())),
+
+            // CONFLICT
+            AppError::EmailAlreadyConfirmed => (StatusCode::CONFLICT, Some(self.to_string())),
+
+            // INTERNAL_SERVER_ERROR
             _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };
 

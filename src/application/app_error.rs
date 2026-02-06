@@ -41,9 +41,18 @@ pub enum AppError {
     
     #[error("The old password is incorrect")]
     InvalidOldPassword,
-    
+
     #[error("Email is not confirmed")]
     EmailNotConfirmed,
+
+    #[error("Invalid or expired confirmation token")]
+    InvalidConfirmationToken,
+
+    #[error("Email is already confirmed")]
+    EmailAlreadyConfirmed,
+
+    #[error("Confirmation token has expired")]
+    ConfirmationTokenExpired,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
