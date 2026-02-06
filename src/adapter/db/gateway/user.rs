@@ -80,7 +80,7 @@ impl UserWriter for UserGateway {
                             UPDATE
                                 users
                             SET
-                                username = $2, email = $3, password = $4
+                                username = $2, email = $3, password = $4, is_confirmed = $5
                             WHERE
                                 id = $1
                             RETURNING
@@ -91,6 +91,7 @@ impl UserWriter for UserGateway {
                     .bind(&user.username)
                     .bind(&user.email)
                     .bind(&user.password)
+                    .bind(&user.is_confirmed)
                     .fetch_one(tx.as_mut())
                     .await?;
                     let id: Uuid = result.try_get("id")?;
