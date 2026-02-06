@@ -22,6 +22,7 @@ impl IntoResponse for AppError {
             AppError::InvalidPassword => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::OldPasswordEmpty => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::InvalidOldPassword => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
             AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some(self.to_string())),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
         };

@@ -41,6 +41,9 @@ pub enum AppError {
     
     #[error("The old password is incorrect")]
     InvalidOldPassword,
+    
+    #[error("Email is not confirmed")]
+    EmailNotConfirmed,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
