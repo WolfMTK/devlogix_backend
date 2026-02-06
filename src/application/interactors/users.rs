@@ -200,3 +200,332 @@ impl UpdateUserInteractor {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        application::{
+            app_error::{AppError, AppResult},
+            dto::user::CreateUserDTO,
+            interactors::users::CreateUserInteractor,
+            interface::{
+                crypto::CredentialsHasher,
+                db::DBSession,
+                gateway::user::{UserReader, UserWriter},
+            },
+        },
+        domain::entities::{id::Id, user::User},
+    };
+    use async_trait::async_trait;
+    use mockall::mock;
+    use rstest::{fixture, rstest};
+    use std::sync::Arc;
+
+    // Mocks
+    mock! {
+        pub DBSessionMock {}
+
+        #[async_trait]
+        impl DBSession for DBSessionMock {
+            async fn commit(&self) -> AppResult<()>;
+        }
+    }
+
+    mock! {
+        pub UserWriterMock {}
+
+        #[async_trait]
+        impl UserWriter for UserWriterMock {
+            async fn insert(&self, user: User) -> AppResult<Id<User>>;
+            async fn update(&self, user: User) -> AppResult<Id<User>>;
+        }
+    }
+
+    mock! {
+        pub HasherMock {}
+
+        #[async_trait]
+        impl CredentialsHasher for HasherMock {
+            async fn hash_password(&self, password: &str) -> AppResult<String>;
+            async fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool>;
+        }
+    }
+
+    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
+
+    struct MockUserReader {
+        is_user_fn: Option<BoxFn<(String, String), AppResult<bool>>>,
+        find_by_id_fn: Option<BoxFn<uuid::Uuid, AppResult<Option<User>>>>,
+        find_by_email_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
+        is_unique_fn: Option<BoxFn<(), AppResult<bool>>>,
+    }
+
+    impl MockUserReader {
+        fn new() -> Self {
+            Self {
+                is_user_fn: None,
+                find_by_id_fn: None,
+                find_by_email_fn: None,
+                is_unique_fn: None,
+            }
+        }
+
+        fn expect_is_user(&mut self, f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static) {
+            self.is_user_fn = Some(Box::new(move |(u, e)| f(&u, &e)));
+        }
+
+        #[allow(dead_code)]
+        fn expect_find_by_id(&mut self, f: impl Fn(uuid::Uuid) -> AppResult<Option<User>> + Send + Sync + 'static) {
+            self.find_by_id_fn = Some(Box::new(f));
+        }
+
+        #[allow(dead_code)]
+        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
+            self.find_by_email_fn = Some(Box::new(move |e| f(&e)));
+        }
+
+        #[allow(dead_code)]
+        fn expect_is_unique(&mut self, f: impl Fn() -> AppResult<bool> + Send + Sync + 'static) {
+            self.is_unique_fn = Some(Box::new(move |()| f()));
+        }
+    }
+
+    #[async_trait]
+    impl UserReader for MockUserReader {
+        async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
+            (self.find_by_email_fn.as_ref().expect("find_by_email not mocked"))(email.to_string())
+        }
+
+        async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
+            (self.is_user_fn.as_ref().expect("is_user not mocked"))((
+                username.to_string(),
+                email.to_string(),
+            ))
+        }
+
+        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
+            (self.find_by_id_fn.as_ref().expect("find_by_id not mocked"))(user_id.value)
+        }
+
+        async fn is_username_or_email_unique(
+            &self,
+            _user_id: &Id<User>,
+            _username: Option<&str>,
+            _email: Option<&str>,
+        ) -> AppResult<bool> {
+            match &self.is_unique_fn {
+                Some(f) => f(()),
+                None => Ok(false),
+            }
+        }
+    }
+
+    // Constants
+    const USERNAME: &str = "testuser";
+    const EMAIL: &str = "test@example.com";
+    const PASSWORD: &str = "Password123!";
+    const HASHED_PASSWORD: &str = "$argon2id$v=19$m=16384,t=2,p=1$fakesalt$fakehash";
+
+    // Fixtures
+    #[fixture]
+    fn valid_dto() -> CreateUserDTO {
+        CreateUserDTO {
+            username: USERNAME.to_string(),
+            email: EMAIL.to_string(),
+            password1: PASSWORD.to_string(),
+            password2: PASSWORD.to_string(),
+        }
+    }
+
+    #[fixture]
+    fn mismatched_passwords_dto() -> CreateUserDTO {
+        CreateUserDTO {
+            username: USERNAME.to_string(),
+            email: EMAIL.to_string(),
+            password1: PASSWORD.to_string(),
+            password2: "DifferentPass1!".to_string(),
+        }
+    }
+
+    struct InteractorDeps {
+        db_session: MockDBSessionMock,
+        user_writer: MockUserWriterMock,
+        user_reader: MockUserReader,
+        hasher: MockHasherMock,
+    }
+
+    impl InteractorDeps {
+        fn new() -> Self {
+            Self {
+                db_session: MockDBSessionMock::new(),
+                user_writer: MockUserWriterMock::new(),
+                user_reader: MockUserReader::new(),
+                hasher: MockHasherMock::new(),
+            }
+        }
+
+        fn build(self) -> CreateUserInteractor {
+            CreateUserInteractor::new(
+                Arc::new(self.db_session),
+                Arc::new(self.user_writer),
+                Arc::new(self.user_reader),
+                Arc::new(self.hasher),
+            )
+        }
+    }
+
+    #[fixture]
+    fn deps() -> InteractorDeps {
+        InteractorDeps::new()
+    }
+
+    // Helpers
+    fn setup_happy_path(deps: &mut InteractorDeps) {
+        deps.user_reader.expect_is_user(|_, _| Ok(false));
+
+        deps.hasher
+            .expect_hash_password()
+            .returning(|_| Ok(HASHED_PASSWORD.to_string()));
+
+        deps.user_writer
+            .expect_insert()
+            .returning(|user| Ok(user.id.clone()));
+
+        deps.db_session.expect_commit().returning(|| Ok(()));
+    }
+
+    // CreateUserInteractor tests
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_success(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        setup_happy_path(&mut deps);
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_ok());
+        let id_dto = result.unwrap();
+        assert!(!id_dto.id.is_empty());
+        assert!(uuid::Uuid::parse_str(&id_dto.id).is_ok());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_password_mismatch(
+        mismatched_passwords_dto: CreateUserDTO,
+        deps: InteractorDeps,
+    ) {
+        let interactor = deps.build();
+        let result = interactor.execute(mismatched_passwords_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::InvalidPassword));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_already_exists(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        deps.user_reader.expect_is_user(|_, _| Ok(true));
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::UserAlreadyExists));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_hash_error(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        deps.user_reader.expect_is_user(|_, _| Ok(false));
+        deps.hasher
+            .expect_hash_password()
+            .returning(|_| Err(AppError::PasswordHashError));
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::PasswordHashError));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_insert_db_error(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        deps.user_reader.expect_is_user(|_, _| Ok(false));
+        deps.hasher
+            .expect_hash_password()
+            .returning(|_| Ok(HASHED_PASSWORD.to_string()));
+        deps.user_writer
+            .expect_insert()
+            .returning(|_| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::DatabaseError(_)));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_commit_error(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        deps.user_reader.expect_is_user(|_, _| Ok(false));
+        deps.hasher
+            .expect_hash_password()
+            .returning(|_| Ok(HASHED_PASSWORD.to_string()));
+        deps.user_writer
+            .expect_insert()
+            .returning(|user| Ok(user.id.clone()));
+        deps.db_session
+            .expect_commit()
+            .returning(|| Err(AppError::SessionAlreadyCommitted));
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            AppError::SessionAlreadyCommitted
+        ));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_reader_db_error(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
+        deps.user_reader
+            .expect_is_user(|_, _| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
+        let interactor = deps.build();
+        let result = interactor.execute(valid_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::DatabaseError(_)));
+    }
+
+    #[rstest]
+    #[case("", "test@example.com", "Password123!", "Password123!")]
+    #[case("testuser", "", "Password123!", "Password123!")]
+    #[tokio::test]
+    async fn test_create_user_empty_fields_still_passes_interactor(
+        #[case] username: &str,
+        #[case] email: &str,
+        #[case] password1: &str,
+        #[case] password2: &str,
+        mut deps: InteractorDeps,
+    ) {
+        setup_happy_path(&mut deps);
+        let interactor = deps.build();
+        let dto = CreateUserDTO {
+            username: username.to_string(),
+            email: email.to_string(),
+            password1: password1.to_string(),
+            password2: password2.to_string(),
+        };
+        let result = interactor.execute(dto).await;
+        assert!(result.is_ok());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_create_user_identical_passwords_both_empty(mut deps: InteractorDeps) {
+        setup_happy_path(&mut deps);
+        let interactor = deps.build();
+        let dto = CreateUserDTO {
+            username: USERNAME.to_string(),
+            email: EMAIL.to_string(),
+            password1: "".to_string(),
+            password2: "".to_string(),
+        };
+        let result = interactor.execute(dto).await;
+        assert!(result.is_ok());
+    }
+}
