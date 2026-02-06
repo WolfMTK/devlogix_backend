@@ -13,7 +13,6 @@ use crate::{
     },
     domain::entities::{id::Id, user::User},
 };
-use chrono::Utc;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -45,16 +44,7 @@ impl CreateUserInteractor {
         self.check_user_exists(&dto.username, &dto.email).await?;
         let hash = self.hasher.hash_password(dto.password1.as_str()).await?;
         let username = dto.username.clone();
-        let now = Utc::now();
-        let user = User {
-            id: Id::generate(),
-            username: dto.username,
-            email: dto.email,
-            password: hash,
-            is_confirmed: false,
-            created_at: now,
-            updated_at: now,
-        };
+        let user = User::new(dto.username, dto.email, hash);
         let user_id = match self.user_writer.insert(user).await {
             Ok(id) => id.value.to_string(),
             Err(err) => {
@@ -139,6 +129,7 @@ impl UpdateUserInteractor {
         }
     }
 
+    // TODO: Remove password validation
     pub async fn execute(&self, dto: UpdateUserDTO) -> AppResult<()> {
         Self::check_passwords(&dto)?;
         let user_id: Id<User> = dto.id.try_into()?;

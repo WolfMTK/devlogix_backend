@@ -11,3 +11,18 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+impl User {
+    pub fn new(username: String, email: String, password: String) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Id::generate(),
+            username,
+            email,
+            password,
+            is_confirmed: false,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}
