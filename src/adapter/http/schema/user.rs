@@ -12,7 +12,9 @@ pub struct CreateUserRequest {
     ))]
     pub username: String,
     pub email: Email,
+    #[validate(nested)]
     pub password1: ValidPassword,
+    #[validate(nested)]
     pub password2: ValidPassword,
 }
 
@@ -28,9 +30,17 @@ pub struct GetUserResponse {
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateUserRequest {
     pub email: Option<Email>,
+    #[validate(length(
+        min = 6,
+        max = 50,
+        message = "Username must be between 6 and 50 characters"
+    ))]
     pub username: Option<String>,
+    #[validate(nested)]
     pub old_password: Option<ValidPassword>,
+    #[validate(nested)]
     pub password1: Option<ValidPassword>,
+    #[validate(nested)]
     pub password2: Option<ValidPassword>,
 }
 
