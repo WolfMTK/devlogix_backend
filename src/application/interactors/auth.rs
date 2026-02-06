@@ -7,13 +7,9 @@ use crate::{
             crypto::CredentialsHasher,
             db::DBSession,
             gateway::{session::SessionWriter, user::UserReader},
-        }
+        },
     },
-    domain::entities::{
-        id::Id,
-        session::Session,
-        user::User
-    }
+    domain::entities::{id::Id, session::Session, user::User},
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -58,6 +54,9 @@ impl LoginInteractor {
         if !is_valid {
             warn!("Invalid password for user: {}", user.username);
             return Err(AppError::InvalidCredentials);
+        }
+        if !user.is_confirmed {
+            return Err(AppError::EmailNotConfirmed);
         }
         let now = Utc::now();
         let session = Session {
