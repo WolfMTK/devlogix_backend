@@ -66,12 +66,6 @@ pub struct ValidPassword {
 }
 
 impl ValidPassword {
-    pub fn new(password: String) -> Result<Self, ValidationErrors> {
-        let valid_password = ValidPassword { value: password };
-        valid_password.validate()?;
-        Ok(valid_password)
-    }
-
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -104,6 +98,8 @@ fn has_special_char(password: &str) -> Result<(), ValidationError> {
 mod tests {
     use crate::adapter::http::schema::user::ValidPassword;
     use rstest::rstest;
+    use serde_json::json;
+    use validator::Validate;
 
     #[rstest]
     fn test_valid_password_success() {
@@ -114,9 +110,13 @@ mod tests {
             "Test123$",
             "P@!s0Word",
         ];
-        let all_valid = passwords
-            .iter()
-            .all(|&password| ValidPassword::new(password.to_owned()).is_ok());
+        let all_valid = passwords.iter().all(|&password| {
+            if let Ok(valid_pwd) = serde_json::from_value::<ValidPassword>(json!(password)) {
+                valid_pwd.validate().is_ok()
+            } else {
+                false
+            }
+        });
         assert!(all_valid, "All passwords should be valid")
     }
 
@@ -126,26 +126,37 @@ mod tests {
     #[case("Password!", "no digit")]
     #[case("Password123", "no special char")]
     fn test_password_invalid(#[case] password: &str, #[case] message: &str) {
-        let result = ValidPassword::new(password.to_owned());
+        let result = serde_json::from_value::<ValidPassword>(json!(password));
+
+        let is_invalid = match result {
+            Ok(pwd) => pwd.validate().is_err(),
+            Err(_) => true,
+        };
+
         assert!(
-            result.is_err(),
+            is_invalid,
             "Password `{}` should fail ({})",
-            password,
-            message
+            password, message
         )
     }
 
     #[rstest]
     fn test_password_value_getter() {
         let password = "Password123!";
-        let result = ValidPassword::new(password.to_owned());
-        assert_eq!(result.unwrap().value, password);
+        let result = serde_json::from_value::<ValidPassword>(json!(password));
+        assert_eq!(result.unwrap().value(), password);
     }
 
     #[rstest]
     fn test_password_unicode_characters() {
         let password = "Пароль123!";
-        let result = ValidPassword::new(password.to_owned());
-        assert!(result.is_err());
+        let result = serde_json::from_value::<ValidPassword>(json!(password));
+
+        let is_invalid = match result {
+            Ok(pwd) => pwd.validate().is_err(),
+            Err(_) => true,
+        };
+
+        assert!(is_invalid);
     }
 }
