@@ -206,20 +206,25 @@ mod tests {
     use crate::{
         application::{
             app_error::{AppError, AppResult},
+            dto::id::IdDTO,
             dto::user::CreateUserDTO,
-            interactors::users::CreateUserInteractor,
+            interactors::users::{
+                CreateUserInteractor,
+                GetMeInteractor
+            },
             interface::{
                 crypto::CredentialsHasher,
                 db::DBSession,
                 gateway::user::{UserReader, UserWriter},
-            },
+            }
         },
-        domain::entities::{id::Id, user::User},
+        domain::entities::{id::Id, user::User}
     };
     use async_trait::async_trait;
     use mockall::mock;
     use rstest::{fixture, rstest};
     use std::sync::Arc;
+    use uuid::Uuid;
 
     // Mocks
     mock! {
@@ -270,17 +275,26 @@ mod tests {
             }
         }
 
-        fn expect_is_user(&mut self, f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static) {
+        fn expect_is_user(
+            &mut self,
+            f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static,
+        ) {
             self.is_user_fn = Some(Box::new(move |(u, e)| f(&u, &e)));
         }
 
         #[allow(dead_code)]
-        fn expect_find_by_id(&mut self, f: impl Fn(uuid::Uuid) -> AppResult<Option<User>> + Send + Sync + 'static) {
+        fn expect_find_by_id(
+            &mut self,
+            f: impl Fn(uuid::Uuid) -> AppResult<Option<User>> + Send + Sync + 'static,
+        ) {
             self.find_by_id_fn = Some(Box::new(f));
         }
 
         #[allow(dead_code)]
-        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
+        fn expect_find_by_email(
+            &mut self,
+            f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static,
+        ) {
             self.find_by_email_fn = Some(Box::new(move |e| f(&e)));
         }
 
@@ -293,7 +307,10 @@ mod tests {
     #[async_trait]
     impl UserReader for MockUserReader {
         async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self.find_by_email_fn.as_ref().expect("find_by_email not mocked"))(email.to_string())
+            (self
+                .find_by_email_fn
+                .as_ref()
+                .expect("find_by_email not mocked"))(email.to_string())
         }
 
         async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
@@ -321,12 +338,32 @@ mod tests {
     }
 
     // Constants
+    const USER_ID: &str = "019c47ec-183d-744e-b11d-cd409015bf13";
     const USERNAME: &str = "testuser";
     const EMAIL: &str = "test@example.com";
     const PASSWORD: &str = "Password123!";
     const HASHED_PASSWORD: &str = "$argon2id$v=19$m=16384,t=2,p=1$fakesalt$fakehash";
 
     // Fixtures
+    #[fixture]
+    fn valid_user() -> User {
+        let mut user = User::new(
+            USERNAME.to_owned(),
+            EMAIL.to_owned(),
+            HASHED_PASSWORD.to_owned(),
+        );
+        let user_id: Id<User> = USER_ID.to_string().try_into().unwrap();
+        user.id = user_id;
+        user
+    }
+
+    #[fixture]
+    fn valid_user_id_dto(valid_user: User) -> IdDTO {
+        IdDTO {
+            id: valid_user.id.value.to_string(),
+        }
+    }
+
     #[fixture]
     fn valid_dto() -> CreateUserDTO {
         CreateUserDTO {
@@ -364,13 +401,17 @@ mod tests {
             }
         }
 
-        fn build(self) -> CreateUserInteractor {
+        fn create_user_interactor(self) -> CreateUserInteractor {
             CreateUserInteractor::new(
                 Arc::new(self.db_session),
                 Arc::new(self.user_writer),
                 Arc::new(self.user_reader),
                 Arc::new(self.hasher),
             )
+        }
+
+        fn get_me_interactor(self) -> GetMeInteractor {
+            GetMeInteractor::new(Arc::new(self.user_reader))
         }
     }
 
@@ -399,7 +440,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_user_success(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
         setup_happy_path(&mut deps);
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_ok());
         let id_dto = result.unwrap();
@@ -413,7 +454,7 @@ mod tests {
         mismatched_passwords_dto: CreateUserDTO,
         deps: InteractorDeps,
     ) {
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(mismatched_passwords_dto).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::InvalidPassword));
@@ -423,7 +464,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_user_already_exists(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader.expect_is_user(|_, _| Ok(true));
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::UserAlreadyExists));
@@ -436,7 +477,7 @@ mod tests {
         deps.hasher
             .expect_hash_password()
             .returning(|_| Err(AppError::PasswordHashError));
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::PasswordHashError));
@@ -452,7 +493,7 @@ mod tests {
         deps.user_writer
             .expect_insert()
             .returning(|_| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::DatabaseError(_)));
@@ -471,7 +512,7 @@ mod tests {
         deps.db_session
             .expect_commit()
             .returning(|| Err(AppError::SessionAlreadyCommitted));
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_err());
         assert!(matches!(
@@ -485,7 +526,7 @@ mod tests {
     async fn test_create_user_reader_db_error(valid_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader
             .expect_is_user(|_, _| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_dto).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::DatabaseError(_)));
@@ -503,7 +544,7 @@ mod tests {
         mut deps: InteractorDeps,
     ) {
         setup_happy_path(&mut deps);
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let dto = CreateUserDTO {
             username: username.to_string(),
             email: email.to_string(),
@@ -518,7 +559,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_user_identical_passwords_both_empty(mut deps: InteractorDeps) {
         setup_happy_path(&mut deps);
-        let interactor = deps.build();
+        let interactor = deps.create_user_interactor();
         let dto = CreateUserDTO {
             username: USERNAME.to_string(),
             email: EMAIL.to_string(),
@@ -527,5 +568,58 @@ mod tests {
         };
         let result = interactor.execute(dto).await;
         assert!(result.is_ok());
+    }
+
+    // GetMeInteractor tests
+    #[rstest]
+    #[tokio::test]
+    async fn test_get_me_success(
+        valid_user: User,
+        valid_user_id_dto: IdDTO,
+        mut deps: InteractorDeps,
+    ) {
+        deps.user_reader
+            .expect_find_by_id(move |_| Ok(Some(valid_user.clone())));
+        let interactor = deps.get_me_interactor();
+        let result = interactor.execute(valid_user_id_dto).await;
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.username, USERNAME);
+        assert_eq!(result.email, EMAIL);
+        assert_eq!(result.id.as_str(), USER_ID);
+        assert!(Uuid::parse_str(&result.id).is_ok());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_get_me_user_not_found(valid_user_id_dto: IdDTO, mut deps: InteractorDeps) {
+        deps.user_reader.expect_find_by_id(|_| Ok(None));
+        let interactor = deps.get_me_interactor();
+        let result = interactor.execute(valid_user_id_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::InvalidCredentials));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_get_me_invalid_id(deps: InteractorDeps) {
+        let interactor = deps.get_me_interactor();
+        let dto = IdDTO {
+            id: "invalid".to_owned(),
+        };
+        let result = interactor.execute(dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::InvalidId(_)));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_get_me_reader_db_error(valid_user_id_dto: IdDTO, mut deps: InteractorDeps) {
+        deps.user_reader
+            .expect_find_by_id(|_| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
+        let interactor = deps.get_me_interactor();
+        let result = interactor.execute(valid_user_id_dto).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::DatabaseError(_)));
     }
 }
