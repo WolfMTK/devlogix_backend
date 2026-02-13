@@ -56,7 +56,7 @@ mod tests {
     fn test_expired_confirmation() {
         let user_id: Id<User> = Id::generate();
         let token = "test_token".to_string();
-        let confirmation = EmailConfirmation::new(user_id.clone(), token.clone(), TTL_SECONDS);
+        let confirmation = EmailConfirmation::new(user_id.clone(), token.clone(), -1);
         assert!(confirmation.is_expired());
     }
 }

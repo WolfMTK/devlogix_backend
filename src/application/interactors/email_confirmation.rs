@@ -1,16 +1,20 @@
-use crate::application::{
-    app_error::{AppError, AppResult},
-    dto::email_confirmation::ConfirmEmailDTO,
-    interface::{
-        db::DBSession,
-        gateway::{
-            email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
-            user::{UserReader, UserWriter},
+use crate::{
+    application::{
+        app_error::{AppError, AppResult},
+        dto::email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO},
+        interface::{
+            db::DBSession,
+            gateway::{
+                email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
+                user::{UserReader, UserWriter},
+            },
         },
     },
+    domain::entities::email_confirmation::EmailConfirmation,
 };
 use std::sync::Arc;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ConfirmEmailInteractor {
@@ -72,27 +76,69 @@ impl ConfirmEmailInteractor {
     }
 }
 
+#[derive(Clone)]
+pub struct ResendConfirmationInteractor {
+    db_session: Arc<dyn DBSession>,
+    email_confirmation_writer: Arc<dyn EmailConfirmationWriter>,
+    user_reader: Arc<dyn UserReader>,
+}
+
+impl ResendConfirmationInteractor {
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        email_confirmation_writer: Arc<dyn EmailConfirmationWriter>,
+        user_reader: Arc<dyn UserReader>,
+    ) -> Self {
+        Self {
+            db_session,
+            email_confirmation_writer,
+            user_reader,
+        }
+    }
+
+    pub async fn execute(&self, dto: ResendConfirmationDTO) -> AppResult<()> {
+        let user = self
+            .user_reader
+            .find_by_email(&dto.email)
+            .await?
+            .ok_or(AppError::InvalidConfirmationToken)?;
+        if user.is_confirmed {
+            return Err(AppError::EmailAlreadyConfirmed);
+        }
+        let token = Uuid::now_v7();
+        let confirmation = EmailConfirmation::new(user.id, token.to_string().clone(), dto.ttl);
+        self.email_confirmation_writer.insert(confirmation).await?;
+        self.db_session.commit().await?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         application::{
             app_error::{AppError, AppResult},
-            dto::session::{SessionDTO, SessionValidationResult},
-            interactors::session::ValidateSessionInteractor,
+            dto::email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO},
+            interactors::email_confirmation::{
+                ConfirmEmailInteractor, ResendConfirmationInteractor,
+            },
             interface::{
                 db::DBSession,
-                gateway::session::{SessionReader, SessionWriter},
+                gateway::{
+                    email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
+                    user::{UserReader, UserWriter},
+                },
             },
         },
-        domain::entities::{id::Id, session::Session, user::User},
+        domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User},
     };
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
     use mockall::mock;
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
+    use sqlx::testing::TestTermination;
     use std::sync::Arc;
 
-    // Mocks
     mock! {
         pub DBSessionMock {}
 
@@ -103,196 +149,241 @@ mod tests {
     }
 
     mock! {
-        pub SessionReaderMock {}
+        pub UserWriterMock {}
 
         #[async_trait]
-        impl SessionReader for SessionReaderMock {
-            async fn find_by_id(&self, session_id: &Id<Session>) -> AppResult<Option<Session>>;
+        impl UserWriter for UserWriterMock {
+            async fn insert(&self, user: User) -> AppResult<Id<User>>;
+            async fn update(&self, user: User) -> AppResult<Id<User>>;
+        }
+    }
+
+    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
+
+    struct MockUserReader {
+        find_by_email_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
+        find_by_id_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
+    }
+
+    impl MockUserReader {
+        fn new() -> Self {
+            Self {
+                find_by_email_fn: None,
+                find_by_id_fn: None,
+            }
+        }
+
+        fn expect_find_by_email(
+            &mut self,
+            f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static,
+        ) {
+            self.find_by_email_fn = Some(Box::new(move |email| f(&email)));
+        }
+
+        fn expect_find_by_id(
+            &mut self,
+            f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static,
+        ) {
+            self.find_by_id_fn = Some(Box::new(move |id| {
+                let user_id: Id<User> = id.try_into().expect("valid uuid");
+                f(&user_id)
+            }));
+        }
+    }
+
+    #[async_trait]
+    impl UserReader for MockUserReader {
+        async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
+            match &self.find_by_email_fn {
+                Some(f) => f(email.to_string()),
+                None => Ok(None),
+            }
+        }
+
+        async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
+            Ok(false)
+        }
+
+        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
+            match &self.find_by_id_fn {
+                Some(f) => f(user_id.value.to_string()),
+                None => Ok(None),
+            }
+        }
+
+        async fn is_username_or_email_unique(
+            &self,
+            _user_id: &Id<User>,
+            _username: Option<&str>,
+            _email: Option<&str>,
+        ) -> AppResult<bool> {
+            Ok(false)
         }
     }
 
     mock! {
-        pub SessionWriterMock {}
+        pub EmailConfirmationReaderMock {}
 
         #[async_trait]
-        impl SessionWriter for SessionWriterMock {
-            async fn insert(&self, session: Session) -> AppResult<Id<Session>>;
-            async fn update_activity(&self, session_id: &Id<Session>, now: chrono::DateTime<Utc>) -> AppResult<()>;
-            async fn rotate(&self, old_session_id: &Id<Session>, new_session: Session) -> AppResult<Id<Session>>;
-            async fn delete(&self, session_id: &Id<Session>) -> AppResult<()>;
-            async fn delete_by_user_id(&self, user_id: &Id<User>) -> AppResult<()>;
+        impl EmailConfirmationReader for EmailConfirmationReaderMock {
+            async fn find_by_token(&self, token: &str) -> AppResult<Option<EmailConfirmation>>;
         }
     }
 
-    // Constants
-    const USER_ID: &str = "019c47ec-183d-744e-b11d-cd409015bf13";
-    const SESSION_ID: &str = "019c47ec-2160-7e53-bf7e-06db2a1bad85";
-    const NEW_SESSION_ID: &str = "019c47ec-29d3-72c4-ba24-a32534f95a71";
+    mock! {
+        pub EmailConfirmationWriterMock {}
 
-    // Fixtures
-    #[fixture]
-    fn session_dto() -> SessionDTO {
-        SessionDTO {
-            id: SESSION_ID.to_string(),
-            default_max_lifetime: 60,
-            default_idle_timeout: 30,
-            remembered_max_lifetime: 120,
-            remembered_idle_timeout: 90,
-            rotation_interval: 20,
+        #[async_trait]
+        impl EmailConfirmationWriter for EmailConfirmationWriterMock {
+            async fn insert(&self, email_confirmation: EmailConfirmation) -> AppResult<Id<EmailConfirmation>>;
+            async fn confirm(&self, confirmation_id: &Id<EmailConfirmation>) -> AppResult<()>;
         }
     }
 
-    fn active_session(remember_me: bool) -> Session {
+    fn unconfirmed_user() -> User {
+        User::new(
+            "Test".to_string(),
+            "ex@example.com".to_string(),
+            "hash".to_string(),
+        )
+    }
+
+    fn confirmation_for(user_id: Id<User>) -> EmailConfirmation {
         let now = Utc::now();
-        Session {
-            id: SESSION_ID.to_string().try_into().unwrap(),
-            user_id: USER_ID.to_string().try_into().unwrap(),
-            created_at: now - Duration::seconds(10),
-            last_activity: now - Duration::seconds(5),
-            last_rotation: now - Duration::seconds(5),
-            remember_me,
+        EmailConfirmation {
+            id: Id::generate(),
+            user_id,
+            token: "token-123".to_string(),
+            expires_at: now + Duration::hours(1),
+            confirmed_at: None,
+            created_at: now,
         }
     }
 
-    // ConfirmEmailInteractor tests
     #[rstest]
     #[tokio::test]
-    async fn test_validate_session_invalid_when_not_found(session_dto: SessionDTO) {
+    async fn test_confirm_email_success() {
+        let mut db_session = MockDBSessionMock::new();
+        let mut reader = MockEmailConfirmationReaderMock::new();
+        let mut writer = MockEmailConfirmationWriterMock::new();
+        let mut user_reader = MockUserReader::new();
+        let mut user_writer = MockUserWriterMock::new();
+
+        let user = unconfirmed_user();
+        let user_id = user.id.clone();
+
+        reader
+            .expect_find_by_token()
+            .returning(move |_| Ok(Some(confirmation_for(user_id.clone()))));
+        user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
+        writer.expect_confirm().returning(|_| Ok(()));
+        user_writer.expect_update().returning(|u| Ok(u.id));
+        db_session.expect_commit().returning(|| Ok(()));
+
+        let interactor = ConfirmEmailInteractor::new(
+            Arc::new(db_session),
+            Arc::new(reader),
+            Arc::new(writer),
+            Arc::new(user_reader),
+            Arc::new(user_writer),
+        );
+
+        let result = interactor
+            .execute(ConfirmEmailDTO {
+                token: "token-123".to_string(),
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_confirm_email_invalid_token() {
         let db_session = MockDBSessionMock::new();
-        let mut session_reader = MockSessionReaderMock::new();
-        let session_writer = MockSessionWriterMock::new();
+        let mut reader = MockEmailConfirmationReaderMock::new();
+        let writer = MockEmailConfirmationWriterMock::new();
+        let user_reader = MockUserReader::new();
+        let user_writer = MockUserWriterMock::new();
 
-        session_reader.expect_find_by_id().returning(|_| Ok(None));
+        reader.expect_find_by_token().returning(|_| Ok(None));
 
-        let interactor = ValidateSessionInteractor::new(
+        let interactor = ConfirmEmailInteractor::new(
             Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
+            Arc::new(reader),
+            Arc::new(writer),
+            Arc::new(user_reader),
+            Arc::new(user_writer),
         );
 
-        let result = interactor.execute(session_dto).await.unwrap();
-        assert!(matches!(result.status, SessionValidationResult::Invalid));
+        let result = interactor
+            .execute(ConfirmEmailDTO {
+                token: "missing".to_string(),
+            })
+            .await;
+
+        assert!(matches!(
+            result.unwrap_err(),
+            AppError::InvalidConfirmationToken
+        ));
     }
 
     #[rstest]
     #[tokio::test]
-    async fn test_validate_session_valid_updates_activity(session_dto: SessionDTO) {
+    async fn test_resend_confirmation_success() {
         let mut db_session = MockDBSessionMock::new();
-        let mut session_reader = MockSessionReaderMock::new();
-        let mut session_writer = MockSessionWriterMock::new();
+        let mut writer = MockEmailConfirmationWriterMock::new();
+        let mut user_reader = MockUserReader::new();
 
-        let session = active_session(false);
-        let expected_user_id = session.user_id.clone();
-        session_reader
-            .expect_find_by_id()
-            .returning(move |_| Ok(Some(session.clone())));
-        session_writer
-            .expect_update_activity()
-            .returning(|_, _| Ok(()));
+        user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
+        writer.expect_insert().returning(|e| Ok(e.id));
         db_session.expect_commit().returning(|| Ok(()));
 
-        let interactor = ValidateSessionInteractor::new(
+        let interactor = ResendConfirmationInteractor::new(
             Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
+            Arc::new(writer),
+            Arc::new(user_reader),
         );
 
-        let result = interactor.execute(session_dto).await.unwrap();
-        match result.status {
-            SessionValidationResult::Valid(user_id) => {
-                assert_eq!(user_id.value, expected_user_id.value)
-            }
-            _ => panic!("expected valid status"),
-        }
+        let result = interactor
+            .execute(ResendConfirmationDTO {
+                email: "ex@example.com".to_string(),
+                ttl: 3600,
+            })
+            .await;
+
+        assert!(result.is_ok());
     }
 
     #[rstest]
     #[tokio::test]
-    async fn test_validate_session_expired_by_max_lifetime(mut session_dto: SessionDTO) {
-        let mut db_session = MockDBSessionMock::new();
-        let mut session_reader = MockSessionReaderMock::new();
-        let mut session_writer = MockSessionWriterMock::new();
-
-        let mut session = active_session(false);
-        session.created_at = Utc::now() - Duration::seconds(120);
-        session_dto.default_max_lifetime = 60;
-        session_reader
-            .expect_find_by_id()
-            .returning(move |_| Ok(Some(session.clone())));
-        session_writer.expect_delete().returning(|_| Ok(()));
-        db_session.expect_commit().returning(|| Ok(()));
-
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
-
-        let result = interactor.execute(session_dto).await.unwrap();
-        assert!(matches!(result.status, SessionValidationResult::Expired));
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_validate_session_rotates(mut session_dto: SessionDTO) {
-        let mut db_session = MockDBSessionMock::new();
-        let mut session_reader = MockSessionReaderMock::new();
-        let mut session_writer = MockSessionWriterMock::new();
-
-        let mut session = active_session(false);
-        session.last_rotation = Utc::now() - Duration::seconds(40);
-        session_dto.rotation_interval = 20;
-        let expected_user_id = session.user_id.clone();
-
-        session_reader
-            .expect_find_by_id()
-            .returning(move |_| Ok(Some(session.clone())));
-        session_writer
-            .expect_rotate()
-            .returning(|_, _| Ok(NEW_SESSION_ID.to_string().try_into().unwrap()));
-        db_session.expect_commit().returning(|| Ok(()));
-
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
-
-        let result = interactor.execute(session_dto).await.unwrap();
-        match result.status {
-            SessionValidationResult::Rotated {
-                user_id,
-                new_session_id,
-            } => {
-                assert_eq!(user_id.value, expected_user_id.value);
-                assert_eq!(new_session_id.value.to_string(), NEW_SESSION_ID);
-            }
-            _ => panic!("expected rotated status"),
-        }
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_validate_session_invalid_id() {
+    async fn test_resend_confirmation_already_confirmed() {
         let db_session = MockDBSessionMock::new();
-        let session_reader = MockSessionReaderMock::new();
-        let session_writer = MockSessionWriterMock::new();
-        let dto = SessionDTO {
-            id: "invalid-id".to_string(),
-            default_max_lifetime: 60,
-            default_idle_timeout: 30,
-            remembered_max_lifetime: 120,
-            remembered_idle_timeout: 90,
-            rotation_interval: 20,
-        };
+        let writer = MockEmailConfirmationWriterMock::new();
+        let mut user_reader = MockUserReader::new();
 
-        let interactor = ValidateSessionInteractor::new(
+        user_reader.expect_find_by_email(|_| {
+            let mut user = unconfirmed_user();
+            user.is_confirmed = true;
+            Ok(Some(user))
+        });
+
+        let interactor = ResendConfirmationInteractor::new(
             Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
+            Arc::new(writer),
+            Arc::new(user_reader),
         );
 
-        let result = interactor.execute(dto).await;
-        assert!(matches!(result.unwrap_err(), AppError::InvalidId(_)));
+        let result = interactor
+            .execute(ResendConfirmationDTO {
+                email: "ex@example.com".to_string(),
+                ttl: 3600,
+            })
+            .await;
+
+        assert!(matches!(
+            result.unwrap_err(),
+            AppError::EmailAlreadyConfirmed
+        ));
     }
 }
