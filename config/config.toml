@@ -22,3 +22,14 @@ cookie_http_only = true
 [email_confirmation]
 ttl = 86400
 confirmation_url = "http://127.0.0.1:5173/confirm-email"
+
+[email]
+provider = "local"
+local_output_dir = "./tmp/emails"
+
+[smtp]
+host = "smtp.gmail.com"
+port = 587
+username = ""
+password = ""
+from = "noreply@example.com"

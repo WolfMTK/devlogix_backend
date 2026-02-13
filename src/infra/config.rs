@@ -36,12 +36,29 @@ pub struct EmailConfirmationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailConfig {
+    pub provider: String,
+    pub local_output_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SMTPConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub from: String
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
     pub application: ApplicationConfig,
     pub session: SessionConfig,
     pub email_confirmation: EmailConfirmationConfig,
+    pub email: EmailConfig,
+    pub smtp: SMTPConfig,
 }
 
 impl AppConfig {
