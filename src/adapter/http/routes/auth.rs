@@ -5,11 +5,7 @@ use crate::{
             extractor::AuthUser,
         },
         schema::{
-            auth::{
-                LoginRequest,
-                MessageResponse,
-                ResendConfirmationRequest
-            },
+            auth::{LoginRequest, MessageResponse, ResendConfirmationRequest},
             email_confirmation::ConfirmEmailQuery,
         },
     },
@@ -18,25 +14,20 @@ use crate::{
         dto::{
             auth::LoginDTO,
             email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO},
-            id::IdDTO
+            id::IdDTO,
         },
         interactors::{
             auth::{LoginInteractor, LogoutInteractor},
-            email_confirmation::{
-                ConfirmEmailInteractor, ResendConfirmationInteractor,
-            }
+            email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor},
         },
     },
-    infra::config::AppConfig
+    infra::config::AppConfig,
 };
 use axum::{
-    extract::{
-        Query,
-        State
-    },
+    extract::{Query, State},
     http::{header::SET_COOKIE, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
-    Json
+    Json,
 };
 use std::sync::Arc;
 
@@ -108,6 +99,7 @@ pub async fn resend_confirmation(
         .execute(ResendConfirmationDTO {
             email: payload.email.to_string(),
             ttl: config.email_confirmation.ttl,
+            confirmation_url: config.email_confirmation.confirmation_url.clone(),
         })
         .await?;
 
@@ -139,19 +131,26 @@ mod tests {
             interface::{
                 crypto::CredentialsHasher,
                 db::DBSession,
+                email::EmailSender,
                 gateway::{
                     email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
                     session::SessionWriter,
                     user::{UserReader, UserWriter},
-                },
-            },
+                }
+            }
         },
         domain::entities::{
             email_confirmation::EmailConfirmation, id::Id, session::Session, user::User,
         },
         infra::config::{
-            AppConfig, ApplicationConfig, DatabaseConfig, EmailConfirmationConfig, LoggerConfig,
-            SessionConfig,
+            AppConfig,
+            ApplicationConfig,
+            DatabaseConfig,
+            EmailConfig,
+            EmailConfirmationConfig,
+            LoggerConfig,
+            SMTPConfig,
+            SessionConfig
         },
     };
     use async_trait::async_trait;
@@ -281,6 +280,15 @@ mod tests {
     }
 
     mock! {
+        pub EmailSenderMock {}
+
+        #[async_trait]
+        impl EmailSender for EmailSenderMock {
+            async fn send(&self, to: &str, subject: &str, body: &str) -> AppResult<()>;
+        }
+    }
+
+    mock! {
         pub UserWriterMock {}
 
         #[async_trait]
@@ -316,6 +324,17 @@ mod tests {
             email_confirmation: EmailConfirmationConfig {
                 ttl: 86_400,
                 confirmation_url: "http://localhost/confirm".to_string(),
+            },
+            email: EmailConfig {
+                provider: "local".to_string(),
+                local_output_dir: "./tmp/test-emails".to_string(),
+            },
+            smtp: SMTPConfig {
+                host: "smtp.example.com".to_string(),
+                port: 587,
+                username: "user".to_string(),
+                password: "pass".to_string(),
+                from: "noreply@example.com".to_string(),
             },
         })
     }
@@ -363,7 +382,7 @@ mod tests {
             "password": "Password123!",
             "remember_me": true
         }))
-            .expect("valid login payload");
+        .expect("valid login payload");
 
         let response = login(interactor, State(test_config()), Json(payload))
             .await
@@ -442,9 +461,9 @@ mod tests {
                 token: "confirmation-token".to_string(),
             }),
         )
-            .await
-            .expect("confirm email should pass")
-            .into_response();
+        .await
+        .expect("confirm email should pass")
+        .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -454,23 +473,26 @@ mod tests {
         let mut db_session = MockDBSessionMock::new();
         let mut confirmation_writer = MockEmailConfirmationWriterMock::new();
         let mut user_reader = MockUserReader::new();
+        let mut email_sender = MockEmailSenderMock::new();
 
         user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
         confirmation_writer
             .expect_insert()
             .returning(|_| Ok(Id::generate()));
         db_session.expect_commit().returning(|| Ok(()));
+        email_sender.expect_send().returning(|_, _, _| Ok(()));
 
         let interactor = ResendConfirmationInteractor::new(
             Arc::new(db_session),
             Arc::new(confirmation_writer),
             Arc::new(user_reader),
+            Arc::new(email_sender),
         );
 
         let payload: ResendConfirmationRequest = serde_json::from_value(json!({
             "email": "ex@example.com"
         }))
-            .expect("valid resend payload");
+        .expect("valid resend payload");
 
         let response = resend_confirmation(interactor, State(test_config()), Json(payload))
             .await
