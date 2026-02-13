@@ -99,6 +99,20 @@ Logs are written to two files:
 
 Format: JSON Lines (NDJSON)
 
+### Email delivery for confirmation links
+
+For local development without SMTP, use:
+
+```toml
+[email]
+provider = "local"
+local_output_dir = "./tmp/emails"
+```
+
+In this mode, each outgoing email is saved as a text file into `local_output_dir`.
+Use `provider = "smtp"` to send real emails via `[smtp]` settings.
+
+
 ## API
 
 ### Health Check
