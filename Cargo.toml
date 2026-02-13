@@ -19,6 +19,11 @@ codegen-units = 16
 strip = true
 incremental = false
 
+[profile.test]
+opt-level = 0
+debug = 0
+incremental = true
+
 [dependencies]
 anyhow = "1.0.100"
 axum = "0.8.8"
