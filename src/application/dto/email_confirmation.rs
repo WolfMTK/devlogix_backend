@@ -7,6 +7,5 @@ pub struct ConfirmEmailDTO {
 pub struct ResendConfirmationDTO {
     pub email: String,
     pub ttl: i64,
+    pub confirmation_url: String,
 }
-
-

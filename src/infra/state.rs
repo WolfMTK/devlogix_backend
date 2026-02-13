@@ -1,3 +1,4 @@
+use crate::application::interface::email::EmailSender;
 use crate::{
     adapter::db::{
         gateway::{
@@ -34,6 +35,7 @@ pub struct AppState {
     pub pool: Pool<Postgres>,
     pub hasher: Arc<dyn CredentialsHasher>,
     pub config: Arc<AppConfig>,
+    pub email_sender: Arc<dyn EmailSender>,
 }
 
 impl FromRef<AppState> for Arc<AppConfig> {
@@ -255,6 +257,7 @@ impl FromAppState for ResendConfirmationInteractor {
             Arc::new(session),
             Arc::new(email_confirmation_gateway),
             Arc::new(user_gateway),
+            state.email_sender.clone(),
         ))
     }
 }

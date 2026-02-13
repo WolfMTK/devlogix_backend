@@ -1,3 +1,4 @@
+use crate::application::interface::email::EmailSender;
 use crate::{
     application::{
         app_error::{AppError, AppResult},
@@ -81,6 +82,7 @@ pub struct ResendConfirmationInteractor {
     db_session: Arc<dyn DBSession>,
     email_confirmation_writer: Arc<dyn EmailConfirmationWriter>,
     user_reader: Arc<dyn UserReader>,
+    email_sender: Arc<dyn EmailSender>,
 }
 
 impl ResendConfirmationInteractor {
@@ -88,11 +90,13 @@ impl ResendConfirmationInteractor {
         db_session: Arc<dyn DBSession>,
         email_confirmation_writer: Arc<dyn EmailConfirmationWriter>,
         user_reader: Arc<dyn UserReader>,
+        email_sender: Arc<dyn EmailSender>,
     ) -> Self {
         Self {
             db_session,
             email_confirmation_writer,
             user_reader,
+            email_sender,
         }
     }
 
@@ -108,6 +112,18 @@ impl ResendConfirmationInteractor {
         let token = Uuid::now_v7();
         let confirmation = EmailConfirmation::new(user.id, token.to_string().clone(), dto.ttl);
         self.email_confirmation_writer.insert(confirmation).await?;
+        let confirmation_link = format!("{}?token={}", dto.confirmation_url, token);
+        // TODO: add email template
+        self.email_sender
+            .send(
+                &user.email,
+                "Подтверждение аккаунте",
+                &format!(
+                    "Пожалуйста, подтвердите свой аккаунт по ссылке: {}",
+                    confirmation_link
+                ),
+            )
+            .await?;
         self.db_session.commit().await?;
         Ok(())
     }
@@ -115,6 +131,7 @@ impl ResendConfirmationInteractor {
 
 #[cfg(test)]
 mod tests {
+    use crate::application::interface::email::EmailSender;
     use crate::{
         application::{
             app_error::{AppError, AppResult},
@@ -138,6 +155,15 @@ mod tests {
     use rstest::rstest;
     use sqlx::testing::TestTermination;
     use std::sync::Arc;
+
+    mock! {
+        pub EmailSenderMock {}
+
+        #[async_trait]
+        impl EmailSender for EmailSenderMock {
+            async fn send(&self, to: &str, subject: &str, body: &str) -> AppResult<()>;
+        }
+    }
 
     mock! {
         pub DBSessionMock {}
@@ -334,21 +360,25 @@ mod tests {
         let mut db_session = MockDBSessionMock::new();
         let mut writer = MockEmailConfirmationWriterMock::new();
         let mut user_reader = MockUserReader::new();
+        let mut email_sender = MockEmailSenderMock::new();
 
         user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
         writer.expect_insert().returning(|e| Ok(e.id));
+        email_sender.expect_send().returning(|_, _, _| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
         let interactor = ResendConfirmationInteractor::new(
             Arc::new(db_session),
             Arc::new(writer),
             Arc::new(user_reader),
+            Arc::new(email_sender),
         );
 
         let result = interactor
             .execute(ResendConfirmationDTO {
                 email: "ex@example.com".to_string(),
                 ttl: 3600,
+                confirmation_url: "http://localhost/confirm-email".to_string(),
             })
             .await;
 
@@ -361,6 +391,7 @@ mod tests {
         let db_session = MockDBSessionMock::new();
         let writer = MockEmailConfirmationWriterMock::new();
         let mut user_reader = MockUserReader::new();
+        let email_sender = MockEmailSenderMock::new();
 
         user_reader.expect_find_by_email(|_| {
             let mut user = unconfirmed_user();
@@ -372,12 +403,14 @@ mod tests {
             Arc::new(db_session),
             Arc::new(writer),
             Arc::new(user_reader),
+            Arc::new(email_sender),
         );
 
         let result = interactor
             .execute(ResendConfirmationDTO {
                 email: "ex@example.com".to_string(),
                 ttl: 3600,
+                confirmation_url: "http://localhost/confirm-email".to_string(),
             })
             .await;
 
