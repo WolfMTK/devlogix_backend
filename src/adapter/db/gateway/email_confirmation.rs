@@ -1,0 +1,124 @@
+use crate::{
+    adapter::db::session::SqlxSession,
+    application::{
+        app_error::AppResult,
+        interface::gateway::email_confirmation::{
+            EmailConfirmationReader, EmailConfirmationWriter,
+        },
+    },
+    domain::entities::{email_confirmation::EmailConfirmation, id::Id},
+};
+use async_trait::async_trait;
+use futures::FutureExt;
+use sqlx::{postgres::PgRow, Row};
+use uuid::Uuid;
+
+#[derive(Clone)]
+pub struct EmailConfirmationGateway {
+    session: SqlxSession,
+}
+
+impl EmailConfirmationGateway {
+    pub fn new(session: SqlxSession) -> Self {
+        Self { session }
+    }
+
+    fn get_email_confirmation(row: Option<PgRow>) -> AppResult<Option<EmailConfirmation>> {
+        match row {
+            Some(row) => Ok(Some(EmailConfirmation {
+                id: Id::new(row.try_get("id")?),
+                user_id: Id::new(row.try_get("user_id")?),
+                token: row.try_get("token")?,
+                expires_at: row.try_get("expires_at")?,
+                confirmed_at: row.try_get("confirmed_at")?,
+                created_at: row.try_get("created_at")?,
+            })),
+            None => Ok(None),
+        }
+    }
+}
+
+#[async_trait]
+impl EmailConfirmationWriter for EmailConfirmationGateway {
+    async fn insert(
+        &self,
+        email_confirmation: EmailConfirmation,
+    ) -> AppResult<Id<EmailConfirmation>> {
+        self.session
+            .with_tx(|tx| {
+                let email_confirmation = email_confirmation.clone();
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                        INSERT INTO email_confirmations
+                            (id, user_id, token, expires_at, confirmed_at, created_at)
+                        VALUES
+                            ($1, $2, $3, $4, $5, $6)
+                        RETURNING id
+                    "#,
+                    )
+                    .bind(email_confirmation.id.value)
+                    .bind(email_confirmation.user_id.value)
+                    .bind(email_confirmation.token)
+                    .bind(email_confirmation.expires_at)
+                    .bind(email_confirmation.confirmed_at)
+                    .bind(email_confirmation.created_at)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+
+                    let id: Uuid = row.try_get("id")?;
+                    Ok(Id::new(id))
+                }
+                .boxed()
+            })
+            .await
+    }
+
+    async fn confirm(&self, confirmation_id: &Id<EmailConfirmation>) -> AppResult<()> {
+        self.session
+            .with_tx(|tx| {
+                let confirmation_id = confirmation_id.value;
+                async move {
+                    sqlx::query(
+                        r#"
+                        UPDATE email_confirmations
+                        SET confirmed_at = now()
+                        WHERE id = $1
+                    "#,
+                    )
+                    .bind(confirmation_id)
+                    .execute(tx.as_mut())
+                    .await?;
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl EmailConfirmationReader for EmailConfirmationGateway {
+    async fn find_by_token(&self, token: &str) -> AppResult<Option<EmailConfirmation>> {
+        self.session
+            .with_tx(|tx| {
+                let token = token.to_owned();
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                        SELECT id, user_id, token, expires_at, confirmed_at, created_at
+                        FROM email_confirmations
+                        WHERE token = $1
+                    "#,
+                    )
+                    .bind(token)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    Self::get_email_confirmation(row)
+                }
+                .boxed()
+            })
+            .await
+    }
+}
