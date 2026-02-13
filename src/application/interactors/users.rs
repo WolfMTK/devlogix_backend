@@ -129,9 +129,7 @@ impl UpdateUserInteractor {
         }
     }
 
-    // TODO: Remove password validation
     pub async fn execute(&self, dto: UpdateUserDTO) -> AppResult<()> {
-        Self::check_passwords(&dto)?;
         let user_id: Id<User> = dto.id.try_into()?;
         self.check_username_or_email(&user_id, dto.username.as_deref(), dto.email.as_deref())
             .await?;
@@ -186,19 +184,6 @@ impl UpdateUserInteractor {
         }
         Ok(())
     }
-
-    fn check_passwords(dto: &UpdateUserDTO) -> AppResult<()> {
-        if !dto.password1.is_none() {
-            if dto.old_password.is_none() {
-                return Err(AppError::OldPasswordEmpty);
-            }
-
-            if dto.password1 != dto.password2 {
-                return Err(AppError::InvalidPassword);
-            }
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -208,23 +193,16 @@ mod tests {
             app_error::{AppError, AppResult},
             dto::{
                 id::IdDTO,
-                user::{
-                    CreateUserDTO,
-                    UpdateUserDTO
-                },
+                user::{CreateUserDTO, UpdateUserDTO},
             },
-            interactors::users::{
-                CreateUserInteractor,
-                GetMeInteractor,
-                UpdateUserInteractor
-            },
+            interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor},
             interface::{
                 crypto::CredentialsHasher,
                 db::DBSession,
                 gateway::user::{UserReader, UserWriter},
-            }
+            },
         },
-        domain::entities::{id::Id, user::User}
+        domain::entities::{id::Id, user::User},
     };
     use async_trait::async_trait;
     use mockall::mock;
@@ -715,35 +693,6 @@ mod tests {
         let interactor = deps.update_user_interactor();
         let result = interactor.execute(valid_update_user_dto).await;
         assert!(result.is_ok());
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_update_user_old_password_empty(
-        deps: InteractorDeps,
-        mut valid_update_user_dto: UpdateUserDTO,
-    ) {
-        valid_update_user_dto.password1 = Some("NewPassword123!".to_string());
-        valid_update_user_dto.password2 = Some("NewPassword123!".to_string());
-        let interactor = deps.update_user_interactor();
-        let result = interactor.execute(valid_update_user_dto).await;
-        assert!(matches!(result.unwrap_err(), AppError::OldPasswordEmpty));
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_update_user_password_mismatch(
-        deps: InteractorDeps,
-        mut valid_update_user_dto: UpdateUserDTO,
-    ) {
-        valid_update_user_dto.old_password = Some(PASSWORD.to_string());
-        valid_update_user_dto.password1 = Some("NewPassword123!".to_string());
-        valid_update_user_dto.password2 = Some("DifferentPassword!".to_string());
-
-        let interactor = deps.update_user_interactor();
-        let result = interactor.execute(valid_update_user_dto).await;
-
-        assert!(matches!(result.unwrap_err(), AppError::InvalidPassword));
     }
 
     #[rstest]
