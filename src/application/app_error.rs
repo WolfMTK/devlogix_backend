@@ -53,6 +53,9 @@ pub enum AppError {
 
     #[error("Confirmation token has expired")]
     ConfirmationTokenExpired,
+
+    #[error("Email send error: {0}")]
+    EmailSendError(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
