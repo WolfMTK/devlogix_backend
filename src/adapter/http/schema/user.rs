@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_email::Email;
-use validator::{Validate, ValidationError};
+use validator::{Validate, ValidateRequired, ValidationError};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateUserRequest {
@@ -28,6 +28,7 @@ pub struct GetUserResponse {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+#[validate(schema(function = "validate_update_user_request"))]
 pub struct UpdateUserRequest {
     pub email: Option<Email>,
     #[validate(length(
@@ -42,6 +43,22 @@ pub struct UpdateUserRequest {
     pub password1: Option<ValidPassword>,
     #[validate(nested)]
     pub password2: Option<ValidPassword>,
+}
+
+fn validate_update_user_request(req: &UpdateUserRequest) -> Result<(), ValidationError> {
+    if req.password1.is_some() {
+        if req.old_password.is_none() {
+            return Err(ValidationError::new("old_password_empty"));
+        }
+        let password_match = match (&req.password1, &req.password2) {
+            (Some(password1), Some(password2)) => password1.value() == password2.value(),
+            _ => false,
+        };
+        if !password_match {
+            return Err(ValidationError::new("invalid_password"));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Validate, Deserialize)]
@@ -96,7 +113,7 @@ fn has_special_char(password: &str) -> Result<(), ValidationError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::http::schema::user::ValidPassword;
+    use crate::adapter::http::schema::user::{UpdateUserRequest, ValidPassword};
     use rstest::rstest;
     use serde_json::json;
     use validator::Validate;
@@ -158,5 +175,29 @@ mod tests {
         };
 
         assert!(is_invalid);
+    }
+
+    #[rstest]
+    fn test_update_user_password_requires_old_password() {
+        let req = UpdateUserRequest {
+            email: None,
+            username: None,
+            old_password: None,
+            password1: serde_json::from_value(json!("Password123!")).ok(),
+            password2: serde_json::from_value(json!("Password123!")).ok(),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[rstest]
+    fn test_update_user_passwords_must_match() {
+        let req = UpdateUserRequest {
+            email: None,
+            username: None,
+            old_password: serde_json::from_value(json!("OldPassword123!")).ok(),
+            password1: serde_json::from_value(json!("Password123!")).ok(),
+            password2: serde_json::from_value(json!("InvalidPassword123!")).ok(),
+        };
+        assert!(req.validate().is_err());
     }
 }
