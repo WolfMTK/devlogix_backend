@@ -14,7 +14,7 @@ use crate::{
     domain::entities::email_confirmation::EmailConfirmation,
 };
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -113,17 +113,25 @@ impl ResendConfirmationInteractor {
         let confirmation = EmailConfirmation::new(user.id, token.to_string().clone(), dto.ttl);
         self.email_confirmation_writer.insert(confirmation).await?;
         let confirmation_link = format!("{}?token={}", dto.confirmation_url, token);
+        let email_sender = Arc::clone(&self.email_sender);
+        let user_email = user.email.clone();
         // TODO: add email template
-        self.email_sender
-            .send(
-                &user.email,
-                "Подтверждение аккаунте",
-                &format!(
-                    "Пожалуйста, подтвердите свой аккаунт по ссылке: {}",
-                    confirmation_link
-                ),
-            )
-            .await?;
+        tokio::spawn(async move {
+            let subject = "Подтверждение аккаунте";
+            let body = format!(
+                "Пожалуйста, подтвердите свой аккаунт по ссылке: {}",
+                confirmation_link
+            );
+            info!("Sending confirmation email to {}", user_email);
+            if let Err(err) = email_sender.send(&user_email, subject, &body).await {
+                error!(
+                    "Failed to send confirmation email to {}: {}",
+                    user_email, err
+                );
+                return;
+            }
+            info!("Confirmation email sent to {}", user_email);
+        });
         self.db_session.commit().await?;
         Ok(())
     }
@@ -131,7 +139,6 @@ impl ResendConfirmationInteractor {
 
 #[cfg(test)]
 mod tests {
-    use crate::application::interface::email::EmailSender;
     use crate::{
         application::{
             app_error::{AppError, AppResult},
@@ -141,19 +148,19 @@ mod tests {
             },
             interface::{
                 db::DBSession,
+                email::EmailSender,
                 gateway::{
                     email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
                     user::{UserReader, UserWriter},
-                },
+                }
             },
         },
-        domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User},
+        domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User}
     };
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
     use mockall::mock;
     use rstest::rstest;
-    use sqlx::testing::TestTermination;
     use std::sync::Arc;
 
     mock! {
@@ -364,7 +371,10 @@ mod tests {
 
         user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
         writer.expect_insert().returning(|e| Ok(e.id));
-        email_sender.expect_send().returning(|_, _, _| Ok(()));
+        email_sender
+            .expect_send()
+            .times(0..=1)
+            .returning(|_, _, _| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
         let interactor = ResendConfirmationInteractor::new(
