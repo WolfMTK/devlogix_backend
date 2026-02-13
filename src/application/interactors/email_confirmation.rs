@@ -4,12 +4,10 @@ use crate::application::{
     interface::{
         db::DBSession,
         gateway::{
-            email_confirmation::{
-                EmailConfirmationReader, EmailConfirmationWriter,
-            },
-            user::{UserReader, UserWriter}
-        }
-    }
+            email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
+            user::{UserReader, UserWriter},
+        },
+    },
 };
 use std::sync::Arc;
 use tracing::{info, warn};
