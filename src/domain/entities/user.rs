@@ -26,3 +26,21 @@ impl User {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct UserInput {
+    pub id: Id<UserInput>,
+    pub user_id: Id<User>,
+    device_name: String,
+    device_type: String,
+    browser: String,
+    ip_address: String,
+    country: String,
+    city: String,
+    is_current: bool,
+    is_suspicious: bool,
+    suspicious_reason: String,
+    updated_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
