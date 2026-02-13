@@ -1,18 +1,21 @@
 use crate::{
     adapter::db::{
-        gateway::{session::SessionGateway, user::UserGateway},
-        session::SqlxSession,
+        gateway::{
+            email_confirmation::EmailConfirmationGateway,
+            session::SessionGateway,
+            user::UserGateway
+        },
+        session::SqlxSession
     },
     application::{
         app_error::{AppError, AppResult},
         interactors::{
             auth::{LoginInteractor, LogoutInteractor},
-            session::ValidateSessionInteractor,
-            users::{
-                CreateUserInteractor,
-                GetMeInteractor,
-                UpdateUserInteractor
+            email_confirmation::{
+                ConfirmEmailInteractor, ResendConfirmationInteractor,
             },
+            session::ValidateSessionInteractor,
+            users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor}
         },
         interface::crypto::CredentialsHasher
     },
@@ -206,5 +209,65 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         UpdateUserInteractor::from_app_state(&app_state).await
+    }
+}
+
+// ConfirmEmailInteractor
+#[async_trait]
+impl FromAppState for ConfirmEmailInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let user_gateway = UserGateway::new(session.clone());
+        let email_confirmation_gateway = EmailConfirmationGateway::new(session.clone());
+
+        Ok(ConfirmEmailInteractor::new(
+            Arc::new(session),
+            Arc::new(email_confirmation_gateway.clone()),
+            Arc::new(email_confirmation_gateway),
+            Arc::new(user_gateway.clone()),
+            Arc::new(user_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for ConfirmEmailInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        ConfirmEmailInteractor::from_app_state(&app_state).await
+    }
+}
+
+// ResendConfirmationInteractor
+#[async_trait]
+impl FromAppState for ResendConfirmationInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let user_gateway = UserGateway::new(session.clone());
+        let email_confirmation_gateway = EmailConfirmationGateway::new(session.clone());
+
+        Ok(ResendConfirmationInteractor::new(
+            Arc::new(session),
+            Arc::new(email_confirmation_gateway),
+            Arc::new(user_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for ResendConfirmationInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        ResendConfirmationInteractor::from_app_state(&app_state).await
     }
 }
