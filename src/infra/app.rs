@@ -1,15 +1,12 @@
 use crate::{
     adapter::http::{
-        middleware::auth::{
-            auth_middleware,
-            session_cookie_middleware
-        },
+        middleware::auth::{auth_middleware, session_cookie_middleware},
         routes::{
-            auth::{login, logout},
+            auth::{confirm_email, login, logout, resend_confirmation},
             user::{get_me, register, update_user},
-        }
+        },
     },
-    infra::{config::AppConfig, state::AppState}
+    infra::{config::AppConfig, state::AppState},
 };
 use axum::{
     http::{
@@ -85,7 +82,10 @@ pub fn user_router(state: AppState) -> Router<AppState> {
 }
 
 pub fn auth_router(state: AppState) -> Router<AppState> {
-    let public_routes = Router::new().route("/login", post(login));
+    let public_routes = Router::new()
+        .route("/login", post(login))
+        .route("/resend-confirmation", post(resend_confirmation))
+        .route("/confirm-email", get(confirm_email));
 
     let protected_routes = Router::new()
         .route("/logout", post(logout))
