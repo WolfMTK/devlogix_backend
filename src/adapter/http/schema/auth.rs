@@ -12,3 +12,8 @@ pub struct LoginRequest {
 pub struct MessageResponse {
     pub message: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ResendConfirmationRequest {
+    pub email: Email,
+}
