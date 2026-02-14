@@ -24,11 +24,11 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
     post,
     path = "/users/register",
     tag = "Users",
-    request_body = CreateUserRequest,
+    request_body(content = CreateUserRequest, example = json!({"username": "new_user", "email": "user@example.com", "password1": "Password123!", "password2": "Password123!"})),
     responses(
-        (status = 200, body = IdResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "User registered", body = IdResponse, example = json!({"id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a"})),
+        (status = 400, description = "Validation error or user already exists", body = ErrorResponse, example = json!({"error": "User already exists"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     )
 )]
 pub async fn register(
@@ -52,12 +52,13 @@ pub async fn register(
     path = "/users/me",
     tag = "Users",
     responses(
-        (status = 200, body = GetUserResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "Current user profile", body = GetUserResponse, example = json!({"id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a", "username": "existing_user", "email": "user@example.com", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"})),
+        (status = 401, description = "Missing or invalid session", body = ErrorResponse, example = json!({"error": "Invalid Credentials"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     ),
     security(("cookieAuth" = []))
 )]
+
 pub async fn get_me(
     auth_user: AuthUser,
     interactor: GetMeInteractor,
@@ -77,16 +78,17 @@ pub async fn get_me(
 }
 
 
+
 #[utoipa::path(
     patch,
     path = "/users/",
     tag = "Users",
-    request_body = UpdateUserRequest,
+    request_body(content = UpdateUserRequest, example = json!({"username": "updated_user", "email": "updated@example.com", "old_password": "OldPassword123!", "password1": "Password123!", "password2": "Password123!"})),
     responses(
-        (status = 200, body = MessageResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "User updated", body = MessageResponse, example = json!({"message": "success"})),
+        (status = 400, description = "Validation error, wrong old password or duplicate user data", body = ErrorResponse, example = json!({"error": "The old password is incorrect"})),
+        (status = 401, description = "Missing or invalid session", body = ErrorResponse, example = json!({"error": "Invalid Credentials"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     ),
     security(("cookieAuth" = []))
 )]

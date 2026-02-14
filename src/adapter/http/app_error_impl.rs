@@ -1,8 +1,8 @@
 use crate::application::app_error::AppError;
 use axum::{
-    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -60,5 +60,6 @@ impl IntoResponse for AppError {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
+    #[schema(example = "Invalid Credentials")]
     pub error: String,
 }

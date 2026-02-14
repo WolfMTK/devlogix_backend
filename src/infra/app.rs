@@ -1,6 +1,6 @@
 use crate::{
     adapter::http::{
-        docs::{openapi_json, scalar_ui},
+        docs::{docs_ui, openapi_json},
         middleware::auth::{auth_middleware, session_cookie_middleware},
         routes::{
             auth::{confirm_email, login, logout, resend_confirmation},
@@ -106,7 +106,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .nest("/users", user_router(state.clone()))
         .nest("/auth", auth_router(state.clone()))
         .route("/openapi.json", get(openapi_json))
-        .route("/scalar", get(scalar_ui))
+        .route("/docs", get(docs_ui))
 }
 
 pub fn create_app(config: &AppConfig, state: AppState) -> Router {

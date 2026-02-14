@@ -8,7 +8,7 @@ use crate::{
         schema::{
             auth::{LoginRequest, MessageResponse, ResendConfirmationRequest},
             email_confirmation::ConfirmEmailQuery,
-        }
+        },
     },
     application::{
         app_error::AppResult,
@@ -22,7 +22,7 @@ use crate::{
             email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor},
         },
     },
-    infra::config::AppConfig
+    infra::config::AppConfig,
 };
 use axum::{
     extract::{Query, State},
@@ -36,12 +36,12 @@ use std::sync::Arc;
     post,
     path = "/auth/login",
     tag = "Auth",
-    request_body = LoginRequest,
+    request_body(content = LoginRequest, example = json!({"email": "user@example.com", "password": "Password123!", "remember_me": true})),
     responses(
-        (status = 200, body = MessageResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 403, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "Login successful", body = MessageResponse, example = json!({"message": "Login successful"})),
+        (status = 401, description = "Invalid email, password or session", body = ErrorResponse, example = json!({"error": "Invalid Credentials"})),
+        (status = 403, description = "Email is not confirmed", body = ErrorResponse, example = json!({"error": "Email is not confirmed"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     )
 )]
 pub async fn login(
@@ -72,13 +72,12 @@ pub async fn login(
     path = "/auth/logout",
     tag = "Auth",
     responses(
-        (status = 200, body = MessageResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "Logged out successfully", body = MessageResponse, example = json!({"message": "Logged out successfully"})),
+        (status = 401, description = "Missing or invalid session", body = ErrorResponse, example = json!({"error": "Invalid Credentials"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     ),
     security(("cookieAuth" = []))
 )]
-
 pub async fn logout(
     auth_user: AuthUser,
     interactor: LogoutInteractor,
@@ -106,10 +105,10 @@ pub async fn logout(
     tag = "Auth",
     params(ConfirmEmailQuery),
     responses(
-        (status = 200, body = MessageResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 409, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "Email confirmed", body = MessageResponse, example = json!({"message": "Email confirmed successfully"})),
+        (status = 400, description = "Invalid or expired confirmation token", body = ErrorResponse, example = json!({"error": "Invalid or expired confirmation token"})),
+        (status = 409, description = "Email already confirmed", body = ErrorResponse, example = json!({"error": "Email is already confirmed"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     )
 )]
 pub async fn confirm_email(
@@ -131,11 +130,12 @@ pub async fn confirm_email(
     post,
     path = "/auth/resend-confirmation",
     tag = "Auth",
-    request_body = ResendConfirmationRequest,
+    request_body(content = ResendConfirmationRequest, example = json!({"email": "user@example.com"})),
     responses(
-        (status = 200, body = MessageResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 500, body = ErrorResponse)
+        (status = 200, description = "Confirmation code resent", body = MessageResponse, example = json!({"message": "Confirmation code has been resent"})),
+        (status = 400, description = "Invalid request payload or unknown email", body = ErrorResponse, example = json!({"error": "Invalid or expired confirmation token"})),
+        (status = 409, description = "Email already confirmed", body = ErrorResponse, example = json!({"error": "Email is already confirmed"})),
+        (status = 500, description = "Internal server error", body = ErrorResponse, example = json!({"error": "Internal Server Error"}))
     )
 )]
 pub async fn resend_confirmation(
@@ -184,21 +184,15 @@ mod tests {
                     email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
                     session::SessionWriter,
                     user::{UserReader, UserWriter},
-                }
-            }
+                },
+            },
         },
         domain::entities::{
             email_confirmation::EmailConfirmation, id::Id, session::Session, user::User,
         },
         infra::config::{
-            AppConfig,
-            ApplicationConfig,
-            DatabaseConfig,
-            EmailConfig,
-            EmailConfirmationConfig,
-            LoggerConfig,
-            SMTPConfig,
-            SessionConfig
+            AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig,
+            LoggerConfig, SMTPConfig, SessionConfig,
         },
     };
     use async_trait::async_trait;

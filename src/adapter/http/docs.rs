@@ -62,19 +62,24 @@ pub async fn openapi_json() -> Json<OpenApiDoc> {
     Json(ApiDoc::openapi())
 }
 
-pub async fn scalar_ui() -> Html<&'static str> {
+pub async fn docs_ui() -> Html<&'static str> {
     Html(
         r#"
             <!doctype html>
             <html>
               <head>
-                <meta charset='utf-8'>
-                <meta name='viewport' content='width=device-width,initial-scale=1'>
-                <title>Devlogix Backend API docs</title>
+                <title>API docs</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+                <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
               </head>
-              <body>
-                <script id='api-reference' data-url='/openapi.json'></script>
-                <script src='https://cdn.jsdelivr.net/npm/@scalar/api-reference'></script>
+              <body style="height: 100%; margin: 0;">
+                <elements-api
+                  apiDescriptionUrl="openapi.json"
+                  basePath="/"
+                  router="hash"
+                />
               </body>
             </html>
         "#,
