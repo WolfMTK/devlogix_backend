@@ -1,5 +1,6 @@
 use crate::{
     adapter::http::{
+        app_error_impl::ErrorResponse,
         middleware::{
             auth::{build_logout_cookie, build_session_cookie},
             extractor::AuthUser,
@@ -7,7 +8,7 @@ use crate::{
         schema::{
             auth::{LoginRequest, MessageResponse, ResendConfirmationRequest},
             email_confirmation::ConfirmEmailQuery,
-        },
+        }
     },
     application::{
         app_error::AppResult,
@@ -21,7 +22,7 @@ use crate::{
             email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor},
         },
     },
-    infra::config::AppConfig,
+    infra::config::AppConfig
 };
 use axum::{
     extract::{Query, State},
@@ -31,6 +32,18 @@ use axum::{
 };
 use std::sync::Arc;
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "Auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, body = MessageResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 403, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    )
+)]
 pub async fn login(
     interactor: LoginInteractor,
     State(config): State<Arc<AppConfig>>,
@@ -54,6 +67,18 @@ pub async fn login(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    tag = "Auth",
+    responses(
+        (status = 200, body = MessageResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    security(("cookieAuth" = []))
+)]
+
 pub async fn logout(
     auth_user: AuthUser,
     interactor: LogoutInteractor,
@@ -75,6 +100,18 @@ pub async fn logout(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/auth/confirm-email",
+    tag = "Auth",
+    params(ConfirmEmailQuery),
+    responses(
+        (status = 200, body = MessageResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    )
+)]
 pub async fn confirm_email(
     interactor: ConfirmEmailInteractor,
     Query(query): Query<ConfirmEmailQuery>,
@@ -90,6 +127,17 @@ pub async fn confirm_email(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/resend-confirmation",
+    tag = "Auth",
+    request_body = ResendConfirmationRequest,
+    responses(
+        (status = 200, body = MessageResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    )
+)]
 pub async fn resend_confirmation(
     interactor: ResendConfirmationInteractor,
     State(config): State<Arc<AppConfig>>,

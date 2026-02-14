@@ -1,10 +1,12 @@
 use crate::application::app_error::AppError;
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
+use serde::Serialize;
 use serde_json::json;
+use utoipa::ToSchema;
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -54,4 +56,9 @@ impl IntoResponse for AppError {
 
         (status, body).into_response()
     }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    pub error: String,
 }

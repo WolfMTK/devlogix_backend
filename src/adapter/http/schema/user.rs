@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_email::Email;
-use validator::{Validate, ValidateRequired, ValidationError};
+use utoipa::ToSchema;
+use validator::{Validate, ValidationError};
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateUserRequest {
     #[validate(length(
         min = 6,
@@ -11,6 +12,7 @@ pub struct CreateUserRequest {
         message = "Username must be between 6 and 50 characters"
     ))]
     pub username: String,
+    #[schema(value_type = String, format = Email)]
     pub email: Email,
     #[validate(nested)]
     pub password1: ValidPassword,
@@ -18,7 +20,7 @@ pub struct CreateUserRequest {
     pub password2: ValidPassword,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct GetUserResponse {
     pub id: String,
     pub username: String,
@@ -27,9 +29,10 @@ pub struct GetUserResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(schema(function = "validate_update_user_request"))]
 pub struct UpdateUserRequest {
+    #[schema(value_type = Option<String>, format = Email)]
     pub email: Option<Email>,
     #[validate(length(
         min = 6,
@@ -61,7 +64,7 @@ fn validate_update_user_request(req: &UpdateUserRequest) -> Result<(), Validatio
     Ok(())
 }
 
-#[derive(Debug, Validate, Deserialize)]
+#[derive(Debug, Validate, Deserialize, ToSchema)]
 #[serde(transparent)]
 pub struct ValidPassword {
     #[validate(

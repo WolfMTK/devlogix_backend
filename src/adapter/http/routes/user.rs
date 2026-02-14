@@ -1,12 +1,13 @@
 use crate::{
     adapter::http::{
+        app_error_impl::ErrorResponse,
         middleware::extractor::AuthUser,
         schema::{
             auth::MessageResponse,
             id::IdResponse,
             user::{CreateUserRequest, GetUserResponse, UpdateUserRequest},
         },
-        validation::ValidJson,
+        validation::ValidJson
     },
     application::{
         app_error::AppResult,
@@ -15,10 +16,21 @@ use crate::{
             user::{CreateUserDTO, UpdateUserDTO},
         },
         interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor},
-    },
+    }
 };
 use axum::{http::StatusCode, response::IntoResponse, Json};
 
+#[utoipa::path(
+    post,
+    path = "/users/register",
+    tag = "Users",
+    request_body = CreateUserRequest,
+    responses(
+        (status = 200, body = IdResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    )
+)]
 pub async fn register(
     interactor: CreateUserInteractor,
     ValidJson(payload): ValidJson<CreateUserRequest>,
@@ -34,6 +46,18 @@ pub async fn register(
     Ok((StatusCode::OK, Json(response)))
 }
 
+
+#[utoipa::path(
+    get,
+    path = "/users/me",
+    tag = "Users",
+    responses(
+        (status = 200, body = GetUserResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_me(
     auth_user: AuthUser,
     interactor: GetMeInteractor,
@@ -52,6 +76,20 @@ pub async fn get_me(
     Ok((StatusCode::OK, Json(response)))
 }
 
+
+#[utoipa::path(
+    patch,
+    path = "/users/",
+    tag = "Users",
+    request_body = UpdateUserRequest,
+    responses(
+        (status = 200, body = MessageResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn update_user(
     auth_user: AuthUser,
     interactor: UpdateUserInteractor,

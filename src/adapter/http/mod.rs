@@ -3,3 +3,4 @@ pub mod middleware;
 pub mod routes;
 pub mod schema;
 pub mod validation;
+pub mod docs;
