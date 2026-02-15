@@ -5,6 +5,7 @@ use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(description = "Request payload to register a new user.")]
 pub struct CreateUserRequest {
     #[validate(length(
         min = 6,
@@ -12,10 +13,12 @@ pub struct CreateUserRequest {
         message = "Username must be between 6 and 50 characters"
     ))]
     pub username: String,
-    #[schema(value_type = String, format = Email)]
+    #[schema(value_type = String, format = Email, example = "user@example.com")]
     pub email: Email,
+    #[schema(value_type = String, example = "Password123!")]
     #[validate(nested)]
     pub password1: ValidPassword,
+    #[schema(value_type = String, example = "Password123!")]
     #[validate(nested)]
     pub password2: ValidPassword,
 }
@@ -31,19 +34,26 @@ pub struct GetUserResponse {
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(schema(function = "validate_update_user_request"))]
+#[schema(
+    description = "Request payload to update user profile fields. If password1 is provided, old_password and password2 are required."
+)]
 pub struct UpdateUserRequest {
-    #[schema(value_type = Option<String>, format = Email)]
+    #[schema(value_type = Option<String>, format = Email, example = "user@example.com")]
     pub email: Option<Email>,
+    #[schema(example = "username")]
     #[validate(length(
         min = 6,
         max = 50,
         message = "Username must be between 6 and 50 characters"
     ))]
     pub username: Option<String>,
+    #[schema(value_type = Option<String>, example = "OldPassword123!")]
     #[validate(nested)]
     pub old_password: Option<ValidPassword>,
+    #[schema(value_type = Option<String>, example = "NewPassword123!")]
     #[validate(nested)]
     pub password1: Option<ValidPassword>,
+    #[schema(value_type = Option<String>, example = "NewPassword123!")]
     #[validate(nested)]
     pub password2: Option<ValidPassword>,
 }
@@ -66,6 +76,9 @@ fn validate_update_user_request(req: &UpdateUserRequest) -> Result<(), Validatio
 
 #[derive(Debug, Validate, Deserialize, ToSchema)]
 #[serde(transparent)]
+#[schema(
+    description = "Validated password string. Validation rules: min length 8, at least one uppercase letter, one digit, and one special character."
+)]
 pub struct ValidPassword {
     #[validate(
         length(min = 8, message = "Password must be at least 8 characters long"),
