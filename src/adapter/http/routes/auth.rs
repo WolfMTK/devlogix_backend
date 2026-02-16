@@ -433,6 +433,7 @@ mod tests {
         impl EmailConfirmationWriter for EmailConfirmationWriterMock {
             async fn insert(&self, email_confirmation: EmailConfirmation) -> AppResult<Id<EmailConfirmation>>;
             async fn confirm(&self, confirmation_id: &Id<EmailConfirmation>) -> AppResult<()>;
+            async fn delete(&self, user_id: &Id<User>) -> AppResult<()>;
         }
     }
 
@@ -619,6 +620,7 @@ mod tests {
         let mut email_sender = MockEmailSenderMock::new();
 
         user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
+        confirmation_writer.expect_delete().returning(|_| Ok(()));
         confirmation_writer.expect_insert().returning(|_| Ok(Id::generate()));
         db_session.expect_commit().returning(|| Ok(()));
         email_sender.expect_send().returning(|_, _, _| Ok(()));
