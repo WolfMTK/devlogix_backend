@@ -1,19 +1,15 @@
-use crate::{
-    adapter::http::middleware::extractor::AuthUser,
-    application::{
-        app_error::{AppError, AppResult},
-        dto::session::{SessionDTO, SessionValidationResult},
-        interactors::session::ValidateSessionInteractor,
-    },
-    infra::config::{AppConfig, SessionConfig},
-};
-use axum::{
-    extract::{Request, State},
-    http::header::SET_COOKIE,
-    middleware::Next,
-    response::Response,
-};
 use std::sync::Arc;
+
+use axum::extract::{Request, State};
+use axum::http::header::SET_COOKIE;
+use axum::middleware::Next;
+use axum::response::Response;
+
+use crate::adapter::http::middleware::extractor::AuthUser;
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::session::{SessionDTO, SessionValidationResult};
+use crate::application::interactors::session::ValidateSessionInteractor;
+use crate::infra::config::{AppConfig, SessionConfig};
 
 #[derive(Clone)]
 pub struct SessionRotation {
@@ -84,19 +80,11 @@ fn extract_session_id(request: &Request, cookie_name: &str) -> AppResult<String>
     Err(AppError::InvalidCredentials)
 }
 
-pub async fn session_cookie_middleware(
-    State(config): State<Arc<AppConfig>>,
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn session_cookie_middleware(State(config): State<Arc<AppConfig>>, request: Request, next: Next) -> Response {
     let rotated = request.extensions().get::<SessionRotation>().cloned();
     let mut response = next.run(request).await;
     if let Some(rotated) = rotated {
-        let cookie = build_session_cookie(
-            &rotated.new_session_id,
-            rotated.remember_me,
-            &config.session,
-        );
+        let cookie = build_session_cookie(&rotated.new_session_id, rotated.remember_me, &config.session);
 
         if let Ok(value) = cookie.parse() {
             response.headers_mut().insert(SET_COOKIE, value);
@@ -113,11 +101,7 @@ pub fn build_session_cookie(session_id: &str, remember_me: bool, config: &Sessio
     };
 
     let secure = if config.cookie_secure { "; Secure" } else { "" };
-    let http_only = if config.cookie_http_only {
-        "; HttpOnly"
-    } else {
-        ""
-    };
+    let http_only = if config.cookie_http_only { "; HttpOnly" } else { "" };
     format!(
         "{}={}; Path=/; Max-Age={}; SameSite=Lax{}{}",
         config.cookie_name, session_id, max_age, secure, http_only

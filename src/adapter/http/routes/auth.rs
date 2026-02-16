@@ -1,36 +1,23 @@
-use crate::{
-    adapter::http::{
-        app_error_impl::ErrorResponse,
-        middleware::{
-            auth::{build_logout_cookie, build_session_cookie},
-            extractor::AuthUser,
-        },
-        schema::{
-            auth::{LoginRequest, MessageResponse, ResendConfirmationRequest},
-            email_confirmation::ConfirmEmailQuery,
-        },
-    },
-    application::{
-        app_error::AppResult,
-        dto::{
-            auth::LoginDTO,
-            email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO},
-            id::IdDTO,
-        },
-        interactors::{
-            auth::{LoginInteractor, LogoutInteractor},
-            email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor},
-        },
-    },
-    infra::config::AppConfig,
-};
-use axum::{
-    extract::{Query, State},
-    http::{header::SET_COOKIE, HeaderMap, HeaderValue, StatusCode},
-    response::IntoResponse,
-    Json,
-};
 use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::{Query, State};
+use axum::http::header::SET_COOKIE;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::IntoResponse;
+
+use crate::adapter::http::app_error_impl::ErrorResponse;
+use crate::adapter::http::middleware::auth::{build_logout_cookie, build_session_cookie};
+use crate::adapter::http::middleware::extractor::AuthUser;
+use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
+use crate::adapter::http::schema::email_confirmation::ConfirmEmailQuery;
+use crate::application::app_error::AppResult;
+use crate::application::dto::auth::LoginDTO;
+use crate::application::dto::email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO};
+use crate::application::dto::id::IdDTO;
+use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
+use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
+use crate::infra::config::AppConfig;
 
 #[utoipa::path(
     post,
@@ -156,9 +143,7 @@ pub async fn logout(
     State(config): State<Arc<AppConfig>>,
 ) -> AppResult<impl IntoResponse> {
     let cookie = build_logout_cookie(&config.session);
-    let dto = IdDTO {
-        id: auth_user.user_id,
-    };
+    let dto = IdDTO { id: auth_user.user_id };
     interactor.execute(dto).await?;
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, HeaderValue::from_str(&cookie)?);
@@ -223,9 +208,7 @@ pub async fn confirm_email(
     interactor: ConfirmEmailInteractor,
     Query(query): Query<ConfirmEmailQuery>,
 ) -> AppResult<impl IntoResponse> {
-    interactor
-        .execute(ConfirmEmailDTO { token: query.token })
-        .await?;
+    interactor.execute(ConfirmEmailDTO { token: query.token }).await?;
     Ok((
         StatusCode::OK,
         Json(MessageResponse {
@@ -312,51 +295,41 @@ pub async fn resend_confirmation(
 
 #[cfg(test)]
 mod tests {
-    use super::{confirm_email, login, logout, resend_confirmation};
-    use crate::{
-        adapter::http::{
-            middleware::extractor::AuthUser,
-            schema::{
-                auth::{LoginRequest, ResendConfirmationRequest},
-                email_confirmation::ConfirmEmailQuery,
-            },
-        },
-        application::{
-            app_error::AppResult,
-            interactors::{
-                auth::{LoginInteractor, LogoutInteractor},
-                email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor},
-            },
-            interface::{
-                crypto::CredentialsHasher,
-                db::DBSession,
-                email::EmailSender,
-                gateway::{
-                    email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
-                    session::SessionWriter,
-                    user::{UserReader, UserWriter},
-                },
-            },
-        },
-        domain::entities::{
-            email_confirmation::EmailConfirmation, id::Id, session::Session, user::User,
-        },
-        infra::config::{
-            AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig,
-            LoggerConfig, SMTPConfig, SessionConfig,
-        },
-    };
+    use std::sync::Arc;
+
     use async_trait::async_trait;
-    use axum::{
-        extract::{Query, State},
-        http::{header::SET_COOKIE, StatusCode},
-        response::IntoResponse,
-        Json,
-    };
+    use axum::Json;
+    use axum::extract::{Query, State};
+    use axum::http::StatusCode;
+    use axum::http::header::SET_COOKIE;
+    use axum::response::IntoResponse;
     use chrono::Utc;
     use mockall::mock;
     use serde_json::json;
-    use std::sync::Arc;
+
+    use super::{confirm_email, login, logout, resend_confirmation};
+    use crate::adapter::http::middleware::extractor::AuthUser;
+    use crate::adapter::http::schema::auth::{LoginRequest, ResendConfirmationRequest};
+    use crate::adapter::http::schema::email_confirmation::ConfirmEmailQuery;
+    use crate::application::app_error::AppResult;
+    use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
+    use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
+    use crate::application::interface::crypto::CredentialsHasher;
+    use crate::application::interface::db::DBSession;
+    use crate::application::interface::email::EmailSender;
+    use crate::application::interface::gateway::email_confirmation::{
+        EmailConfirmationReader, EmailConfirmationWriter,
+    };
+    use crate::application::interface::gateway::session::SessionWriter;
+    use crate::application::interface::gateway::user::{UserReader, UserWriter};
+    use crate::domain::entities::email_confirmation::EmailConfirmation;
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::session::Session;
+    use crate::domain::entities::user::User;
+    use crate::infra::config::{
+        AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig, SMTPConfig,
+        SessionConfig,
+    };
 
     mock! {
         pub DBSessionMock {}
@@ -382,17 +355,11 @@ mod tests {
             }
         }
 
-        fn expect_find_by_email(
-            &mut self,
-            f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_email_fn = Some(Box::new(move |email| f(&email)));
         }
 
-        fn expect_find_by_id(
-            &mut self,
-            f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_id_fn = Some(Box::new(move |id| {
                 let user_id: Id<User> = id.try_into().expect("valid uuid");
                 f(&user_id)
@@ -403,10 +370,7 @@ mod tests {
     #[async_trait]
     impl UserReader for MockUserReader {
         async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self
-                .find_by_email_fn
-                .as_ref()
-                .expect("find_by_email must be mocked"))(email.to_string())
+            (self.find_by_email_fn.as_ref().expect("find_by_email must be mocked"))(email.to_string())
         }
 
         async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
@@ -533,21 +497,13 @@ mod tests {
     }
 
     fn confirmed_user() -> User {
-        let mut user = User::new(
-            "Test".to_string(),
-            "ex@example.com".to_string(),
-            "password".to_string(),
-        );
+        let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string());
         user.is_confirmed = true;
         user
     }
 
     fn unconfirmed_user() -> User {
-        User::new(
-            "Test".to_string(),
-            "ex@example.com".to_string(),
-            "password".to_string(),
-        )
+        User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string())
     }
 
     #[tokio::test]
@@ -559,9 +515,7 @@ mod tests {
 
         user_reader.expect_find_by_email(|_| Ok(Some(confirmed_user())));
         hasher.expect_verify_password().returning(|_, _| Ok(true));
-        session_writer
-            .expect_insert()
-            .returning(|_| Ok(Id::generate()));
+        session_writer.expect_insert().returning(|_| Ok(Id::generate()));
         db_session.expect_commit().returning(|| Ok(()));
 
         let interactor = LoginInteractor::new(
@@ -590,9 +544,7 @@ mod tests {
     async fn test_logout_handler_sets_expired_cookie_and_returns_ok() {
         let mut db_session = MockDBSessionMock::new();
         let mut session_writer = MockSessionWriterMock::new();
-        session_writer
-            .expect_delete_by_user_id()
-            .returning(|_| Ok(()));
+        session_writer.expect_delete_by_user_id().returning(|_| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
         let interactor = LogoutInteractor::new(Arc::new(db_session), Arc::new(session_writer));
@@ -626,15 +578,13 @@ mod tests {
         let user = confirmed_user();
         let user_id = user.id.clone();
 
-        confirmation_reader
-            .expect_find_by_token()
-            .returning(move |_| {
-                Ok(Some(EmailConfirmation::new(
-                    user_id.clone(),
-                    "confirmation-token".to_string(),
-                    3600,
-                )))
-            });
+        confirmation_reader.expect_find_by_token().returning(move |_| {
+            Ok(Some(EmailConfirmation::new(
+                user_id.clone(),
+                "confirmation-token".to_string(),
+                3600,
+            )))
+        });
         user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
         confirmation_writer.expect_confirm().returning(|_| Ok(()));
         user_writer.expect_update().returning(|u| Ok(u.id));
@@ -669,9 +619,7 @@ mod tests {
         let mut email_sender = MockEmailSenderMock::new();
 
         user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
-        confirmation_writer
-            .expect_insert()
-            .returning(|_| Ok(Id::generate()));
+        confirmation_writer.expect_insert().returning(|_| Ok(Id::generate()));
         db_session.expect_commit().returning(|| Ok(()));
         email_sender.expect_send().returning(|_, _, _| Ok(()));
 

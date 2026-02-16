@@ -1,11 +1,11 @@
+use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer, fmt};
+
 use crate::infra::config::AppConfig;
-use tracing_appender::{
-    non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard},
-    rolling::{RollingFileAppender, Rotation},
-};
-use tracing_subscriber::{
-    EnvFilter, Layer, filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt,
-};
 
 fn create_file_appender(log_path: &str, prefix: &str) -> RollingFileAppender {
     RollingFileAppender::builder()
@@ -30,9 +30,7 @@ where
     fmt::layer()
         .json()
         .with_writer(writer)
-        .with_filter(filter_fn(|metadata| {
-            metadata.level() == &tracing::Level::ERROR
-        }))
+        .with_filter(filter_fn(|metadata| metadata.level() == &tracing::Level::ERROR))
 }
 
 fn create_log_layer<S>(writer: NonBlocking) -> impl Layer<S>

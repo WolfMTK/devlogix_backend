@@ -1,16 +1,13 @@
-use crate::{
-    application::{
-        app_error::AppResult,
-        dto::session::{GetSessionStatusDTO, SessionDTO, SessionValidationResult},
-        interface::{
-            db::DBSession,
-            gateway::session::{SessionReader, SessionWriter},
-        },
-    },
-    domain::entities::{id::Id, session::Session},
-};
-use chrono::{Duration, Utc};
 use std::sync::Arc;
+
+use chrono::{Duration, Utc};
+
+use crate::application::app_error::AppResult;
+use crate::application::dto::session::{GetSessionStatusDTO, SessionDTO, SessionValidationResult};
+use crate::application::interface::db::DBSession;
+use crate::application::interface::gateway::session::{SessionReader, SessionWriter};
+use crate::domain::entities::id::Id;
+use crate::domain::entities::session::Session;
 
 #[derive(Debug, Clone)]
 struct SessionTimeouts {
@@ -108,9 +105,7 @@ impl ValidateSessionInteractor {
                 },
             });
         }
-        self.session_writer
-            .update_activity(&session_id, now)
-            .await?;
+        self.session_writer.update_activity(&session_id, now).await?;
         self.db_session.commit().await?;
         Ok(GetSessionStatusDTO {
             status: SessionValidationResult::Valid(session.user_id),
@@ -120,23 +115,21 @@ impl ValidateSessionInteractor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        application::{
-            app_error::{AppError, AppResult},
-            dto::session::{SessionDTO, SessionValidationResult},
-            interactors::session::ValidateSessionInteractor,
-            interface::{
-                db::DBSession,
-                gateway::session::{SessionReader, SessionWriter},
-            },
-        },
-        domain::entities::{id::Id, session::Session, user::User},
-    };
+    use std::sync::Arc;
+
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
     use mockall::mock;
     use rstest::{fixture, rstest};
-    use std::sync::Arc;
+
+    use crate::application::app_error::{AppError, AppResult};
+    use crate::application::dto::session::{SessionDTO, SessionValidationResult};
+    use crate::application::interactors::session::ValidateSessionInteractor;
+    use crate::application::interface::db::DBSession;
+    use crate::application::interface::gateway::session::{SessionReader, SessionWriter};
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::session::Session;
+    use crate::domain::entities::user::User;
 
     // Mocks
     mock! {
@@ -210,11 +203,8 @@ mod tests {
 
         session_reader.expect_find_by_id().returning(|_| Ok(None));
 
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
+        let interactor =
+            ValidateSessionInteractor::new(Arc::new(db_session), Arc::new(session_reader), Arc::new(session_writer));
 
         let result = interactor.execute(session_dto).await.unwrap();
         assert!(matches!(result.status, SessionValidationResult::Invalid));
@@ -232,16 +222,11 @@ mod tests {
         session_reader
             .expect_find_by_id()
             .returning(move |_| Ok(Some(session.clone())));
-        session_writer
-            .expect_update_activity()
-            .returning(|_, _| Ok(()));
+        session_writer.expect_update_activity().returning(|_, _| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
+        let interactor =
+            ValidateSessionInteractor::new(Arc::new(db_session), Arc::new(session_reader), Arc::new(session_writer));
 
         let result = interactor.execute(session_dto).await.unwrap();
         match result.status {
@@ -268,11 +253,8 @@ mod tests {
         session_writer.expect_delete().returning(|_| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
+        let interactor =
+            ValidateSessionInteractor::new(Arc::new(db_session), Arc::new(session_reader), Arc::new(session_writer));
 
         let result = interactor.execute(session_dto).await.unwrap();
         assert!(matches!(result.status, SessionValidationResult::Expired));
@@ -298,11 +280,8 @@ mod tests {
             .returning(|_, _| Ok(NEW_SESSION_ID.to_string().try_into().unwrap()));
         db_session.expect_commit().returning(|| Ok(()));
 
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
+        let interactor =
+            ValidateSessionInteractor::new(Arc::new(db_session), Arc::new(session_reader), Arc::new(session_writer));
 
         let result = interactor.execute(session_dto).await.unwrap();
         match result.status {
@@ -332,11 +311,8 @@ mod tests {
             rotation_interval: 20,
         };
 
-        let interactor = ValidateSessionInteractor::new(
-            Arc::new(db_session),
-            Arc::new(session_reader),
-            Arc::new(session_writer),
-        );
+        let interactor =
+            ValidateSessionInteractor::new(Arc::new(db_session), Arc::new(session_reader), Arc::new(session_writer));
 
         let result = interactor.execute(dto).await;
         assert!(matches!(result.unwrap_err(), AppError::InvalidId(_)));

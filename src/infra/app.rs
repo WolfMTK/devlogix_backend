@@ -1,29 +1,18 @@
-use crate::{
-    adapter::http::{
-        docs::{docs_ui, openapi_json},
-        middleware::auth::{auth_middleware, session_cookie_middleware},
-        routes::{
-            auth::{confirm_email, login, logout, resend_confirmation},
-            user::{get_me, register, update_user},
-        }
-    },
-    infra::{config::AppConfig, state::AppState}
-};
-use axum::{
-    http::{
-        self,
-        header::{AUTHORIZATION, CONTENT_TYPE},
-    },
-    middleware,
-    routing::{get, patch, post},
-    Router,
-};
-use tower_http::{
-    cors::{Any, CorsLayer},
-    trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
-};
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use axum::http::{self};
+use axum::routing::{get, patch, post};
+use axum::{Router, middleware};
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use uuid::Uuid;
+
+use crate::adapter::http::docs::{docs_ui, openapi_json};
+use crate::adapter::http::middleware::auth::{auth_middleware, session_cookie_middleware};
+use crate::adapter::http::routes::auth::{confirm_email, login, logout, resend_confirmation};
+use crate::adapter::http::routes::user::{get_me, register, update_user};
+use crate::infra::config::AppConfig;
+use crate::infra::state::AppState;
 
 fn build_cors(config: &AppConfig) -> CorsLayer {
     let has_wildcard = config.application.allow_origins.iter().any(|s| s == "*");
@@ -70,14 +59,8 @@ pub fn user_router(state: AppState) -> Router<AppState> {
     let protected_routes = Router::new()
         .route("/me", get(get_me))
         .route("/", patch(update_user))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            session_cookie_middleware,
-        ))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        ));
+        .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     Router::new().merge(public_routes).merge(protected_routes)
 }
@@ -90,14 +73,8 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
 
     let protected_routes = Router::new()
         .route("/logout", post(logout))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            session_cookie_middleware,
-        ))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        ));
+        .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
     Router::new().merge(public_routes).merge(protected_routes)
 }
 

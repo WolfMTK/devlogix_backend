@@ -1,21 +1,14 @@
-use axum::{response::Html, Json};
-use utoipa::{
-    openapi::{
-        security::{ApiKey, ApiKeyValue, SecurityScheme},
-        OpenApi as OpenApiDoc,
-    }, Modify,
-    OpenApi,
-};
+use axum::Json;
+use axum::response::Html;
+use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+use utoipa::{Modify, OpenApi};
 
-use crate::adapter::http::{
-    app_error_impl::ErrorResponse,
-    routes::{auth, user},
-    schema::{
-        auth::{LoginRequest, MessageResponse, ResendConfirmationRequest},
-        id::IdResponse,
-        user::{CreateUserRequest, GetUserResponse, UpdateUserRequest, ValidPassword},
-    },
-};
+use crate::adapter::http::app_error_impl::ErrorResponse;
+use crate::adapter::http::routes::{auth, user};
+use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
+use crate::adapter::http::schema::id::IdResponse;
+use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest, ValidPassword};
 
 struct SecurityAddon;
 

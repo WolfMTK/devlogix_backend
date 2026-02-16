@@ -1,9 +1,8 @@
-use crate::infra::config::AppConfig;
-use sqlx::{
-    postgres::PgPoolOptions,
-    PgPool
-};
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tracing::info;
+
+use crate::infra::config::AppConfig;
 
 pub async fn init_db(config: &AppConfig) -> anyhow::Result<PgPool> {
     let pool = PgPoolOptions::new()

@@ -1,5 +1,7 @@
-use crate::domain::entities::{id::Id, user::User};
 use chrono::{DateTime, Duration, Utc};
+
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Debug, Clone)]
 pub struct EmailConfirmation {
@@ -35,8 +37,11 @@ impl EmailConfirmation {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User};
     use rstest::rstest;
+
+    use crate::domain::entities::email_confirmation::EmailConfirmation;
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::user::User;
 
     const TTL_SECONDS: i64 = 3600;
 

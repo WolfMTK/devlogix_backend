@@ -1,16 +1,12 @@
-use crate::{
-    application::{
-        app_error::{AppError, AppResult},
-        interface::email::EmailSender,
-    },
-    infra::config::SMTPConfig,
-};
 use async_trait::async_trait;
-use lettre::{
-    message::Mailbox, transport::smtp::{authentication::Credentials, AsyncSmtpTransport}, AsyncTransport,
-    Message,
-    Tokio1Executor,
-};
+use lettre::message::Mailbox;
+use lettre::transport::smtp::AsyncSmtpTransport;
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{AsyncTransport, Message, Tokio1Executor};
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interface::email::EmailSender;
+use crate::infra::config::SMTPConfig;
 
 #[derive(Clone)]
 pub struct SMTPEmailSender {
@@ -20,13 +16,9 @@ pub struct SMTPEmailSender {
 
 impl SMTPEmailSender {
     pub fn new(config: &SMTPConfig) -> Self {
-        let mut transport =
-            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host).port(config.port);
+        let mut transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host).port(config.port);
         if !config.username.is_empty() {
-            transport = transport.credentials(Credentials::new(
-                config.username.clone(),
-                config.password.clone(),
-            ));
+            transport = transport.credentials(Credentials::new(config.username.clone(), config.password.clone()));
         }
         Self {
             from: config.from.clone(),

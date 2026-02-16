@@ -1,14 +1,15 @@
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use futures::FutureExt;
+use sqlx::{Postgres, Row, Transaction};
+use uuid::Uuid;
+
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::AppResult;
 use crate::application::interface::gateway::session::{SessionReader, SessionWriter};
 use crate::domain::entities::id::Id;
 use crate::domain::entities::session::Session;
 use crate::domain::entities::user::User;
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use futures::FutureExt;
-use sqlx::{Postgres, Row, Transaction};
-use uuid::Uuid;
 
 pub struct SessionGateway {
     session: SqlxSession,
@@ -19,10 +20,7 @@ impl SessionGateway {
         Self { session }
     }
 
-    async fn insert_session(
-        tx: &mut Transaction<'_, Postgres>,
-        session: Session,
-    ) -> AppResult<Id<Session>> {
+    async fn insert_session(tx: &mut Transaction<'_, Postgres>, session: Session) -> AppResult<Id<Session>> {
         let result = sqlx::query(
             r#"
                 INSERT INTO sessions
@@ -79,11 +77,7 @@ impl SessionWriter for SessionGateway {
             .await
     }
 
-    async fn rotate(
-        &self,
-        old_session_id: &Id<Session>,
-        new_session: Session,
-    ) -> AppResult<Id<Session>> {
+    async fn rotate(&self, old_session_id: &Id<Session>, new_session: Session) -> AppResult<Id<Session>> {
         self.session
             .with_tx(|tx| {
                 let old_id = old_session_id.value;

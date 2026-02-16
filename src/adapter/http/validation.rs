@@ -1,7 +1,9 @@
-use crate::application::app_error::AppError;
-use axum::extract::{FromRequest, Json, Request, rejection::JsonRejection};
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, Json, Request};
 use serde::de::DeserializeOwned;
 use validator::Validate;
+
+use crate::application::app_error::AppError;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ValidJson<T>(pub T);

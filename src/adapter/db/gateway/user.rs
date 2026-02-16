@@ -1,15 +1,14 @@
-use crate::{
-    adapter::db::session::SqlxSession,
-    application::{
-        app_error::AppResult,
-        interface::gateway::user::{UserReader, UserWriter},
-    },
-    domain::entities::{id::Id, user::User},
-};
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::{postgres::PgRow, Row};
+use sqlx::Row;
+use sqlx::postgres::PgRow;
 use uuid::Uuid;
+
+use crate::adapter::db::session::SqlxSession;
+use crate::application::app_error::AppResult;
+use crate::application::interface::gateway::user::{UserReader, UserWriter};
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Clone)]
 pub struct UserGateway {

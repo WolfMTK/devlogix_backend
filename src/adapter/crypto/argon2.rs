@@ -1,18 +1,10 @@
-use crate::application::{
-    app_error::{AppError, AppResult},
-    interface::crypto::CredentialsHasher,
-};
-use argon2::{
-    password_hash::{
-        rand_core::OsRng,
-        SaltString
-    },
-    Argon2,
-    PasswordHash,
-    PasswordHasher,
-    PasswordVerifier
-};
+use argon2::password_hash::SaltString;
+use argon2::password_hash::rand_core::OsRng;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use async_trait::async_trait;
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interface::crypto::CredentialsHasher;
 
 #[derive(Default, Clone)]
 pub struct ArgonPasswordHasher {
@@ -40,8 +32,7 @@ impl CredentialsHasher for ArgonPasswordHasher {
         let hashed = hashed.to_owned();
         let hasher = self.hasher.clone();
         tokio::task::spawn_blocking(move || {
-            let parsed_hash =
-                PasswordHash::new(&hashed).map_err(|_| AppError::InvalidCredentials)?;
+            let parsed_hash = PasswordHash::new(&hashed).map_err(|_| AppError::InvalidCredentials)?;
             match hasher.verify_password(password.as_bytes(), &parsed_hash) {
                 Ok(_) => Ok(true),
                 Err(_) => Ok(false),
@@ -67,11 +58,7 @@ mod tests {
                 assert!(!val.is_empty(), "Hashed password should not be empty");
                 let result = hasher.verify_password(&PASSWORD, &val).await;
                 assert!(result.is_ok(), "Verification should succeed");
-                assert_eq!(
-                    result.unwrap(),
-                    true,
-                    "Verification should return true for correct password"
-                );
+                assert_eq!(result.unwrap(), true, "Verification should return true for correct password");
             }
             Err(e) => panic!("Hashing should not fail for a valid password: {:?}", e),
         }
@@ -82,13 +69,8 @@ mod tests {
         let hasher = ArgonPasswordHasher::default();
         let hash = hasher.hash_password(&PASSWORD).await;
         let invalid_password = "InvalidPassword123!";
-        let is_valid = hasher
-            .verify_password(invalid_password, &hash.unwrap())
-            .await;
-        assert!(
-            !is_valid.unwrap(),
-            "Password should be verified as incorrect"
-        );
+        let is_valid = hasher.verify_password(invalid_password, &hash.unwrap()).await;
+        assert!(!is_valid.unwrap(), "Password should be verified as incorrect");
     }
 
     #[tokio::test]
@@ -96,10 +78,7 @@ mod tests {
         let hasher = ArgonPasswordHasher::default();
         let invalid_hash = "invalid";
         let result = hasher.verify_password(PASSWORD, invalid_hash).await;
-        assert!(
-            result.is_err(),
-            "Verification should fail with invalid hash format"
-        );
+        assert!(result.is_err(), "Verification should fail with invalid hash format");
         assert!(
             matches!(result, Err(AppError::InvalidCredentials)),
             "Error should be InvalidCredentials"

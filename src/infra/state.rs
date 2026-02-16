@@ -1,34 +1,22 @@
-use crate::application::interface::email::EmailSender;
-use crate::{
-    adapter::db::{
-        gateway::{
-            email_confirmation::EmailConfirmationGateway,
-            session::SessionGateway,
-            user::UserGateway
-        },
-        session::SqlxSession
-    },
-    application::{
-        app_error::{AppError, AppResult},
-        interactors::{
-            auth::{LoginInteractor, LogoutInteractor},
-            email_confirmation::{
-                ConfirmEmailInteractor, ResendConfirmationInteractor,
-            },
-            session::ValidateSessionInteractor,
-            users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor}
-        },
-        interface::crypto::CredentialsHasher
-    },
-    infra::config::AppConfig
-};
-use async_trait::async_trait;
-use axum::{
-    extract::{FromRef, FromRequestParts},
-    http::request::Parts,
-};
-use sqlx::{Pool, Postgres};
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use axum::extract::{FromRef, FromRequestParts};
+use axum::http::request::Parts;
+use sqlx::{Pool, Postgres};
+
+use crate::adapter::db::gateway::email_confirmation::EmailConfirmationGateway;
+use crate::adapter::db::gateway::session::SessionGateway;
+use crate::adapter::db::gateway::user::UserGateway;
+use crate::adapter::db::session::SqlxSession;
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
+use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
+use crate::application::interactors::session::ValidateSessionInteractor;
+use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
+use crate::application::interface::crypto::CredentialsHasher;
+use crate::application::interface::email::EmailSender;
+use crate::infra::config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppState {

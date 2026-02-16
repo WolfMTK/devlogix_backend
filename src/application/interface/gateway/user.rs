@@ -1,8 +1,8 @@
-use crate::{
-    application::app_error::AppResult,
-    domain::entities::{id::Id, user::User},
-};
 use async_trait::async_trait;
+
+use crate::application::app_error::AppResult;
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[async_trait]
 pub trait UserWriter: Send + Sync {

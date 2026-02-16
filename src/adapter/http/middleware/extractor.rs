@@ -1,6 +1,7 @@
-use crate::application::app_error::{AppError, AppResult};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+
+use crate::application::app_error::{AppError, AppResult};
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {

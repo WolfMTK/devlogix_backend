@@ -1,8 +1,7 @@
-use crate::domain::entities::{
-    id::Id,
-    user::User
-};
 use chrono::{DateTime, Utc};
+
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {

@@ -1,18 +1,15 @@
-use crate::domain::entities::user::User;
-use crate::{
-    adapter::db::session::SqlxSession,
-    application::{
-        app_error::AppResult,
-        interface::gateway::email_confirmation::{
-            EmailConfirmationReader, EmailConfirmationWriter,
-        },
-    },
-    domain::entities::{email_confirmation::EmailConfirmation, id::Id},
-};
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::{Row, postgres::PgRow};
+use sqlx::Row;
+use sqlx::postgres::PgRow;
 use uuid::Uuid;
+
+use crate::adapter::db::session::SqlxSession;
+use crate::application::app_error::AppResult;
+use crate::application::interface::gateway::email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter};
+use crate::domain::entities::email_confirmation::EmailConfirmation;
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Clone)]
 pub struct EmailConfirmationGateway {
@@ -41,10 +38,7 @@ impl EmailConfirmationGateway {
 
 #[async_trait]
 impl EmailConfirmationWriter for EmailConfirmationGateway {
-    async fn insert(
-        &self,
-        email_confirmation: EmailConfirmation,
-    ) -> AppResult<Id<EmailConfirmation>> {
+    async fn insert(&self, email_confirmation: EmailConfirmation) -> AppResult<Id<EmailConfirmation>> {
         self.session
             .with_tx(|tx| {
                 let email_confirmation = email_confirmation.clone();

@@ -1,19 +1,21 @@
-use crate::application::app_error::AppError;
 use std::marker::PhantomData;
 use std::str::FromStr;
+
 use uuid::Uuid;
+
+use crate::application::app_error::AppError;
 
 #[derive(Debug, Clone)]
 pub struct Id<T> {
     pub value: Uuid,
-    _marker: PhantomData<T>
+    _marker: PhantomData<T>,
 }
 
 impl<T> Id<T> {
     pub fn new(value: Uuid) -> Self {
         Self {
             value,
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -22,23 +24,23 @@ impl<T> Id<T> {
     }
 }
 
-impl <T> TryFrom<String> for Id<T> {
+impl<T> TryFrom<String> for Id<T> {
     type Error = AppError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let uuid = Uuid::from_str(&value)
-            .map_err(|e| AppError::InvalidId(format!("Invalid UUID: {}", e)))?;
+        let uuid = Uuid::from_str(&value).map_err(|e| AppError::InvalidId(format!("Invalid UUID: {}", e)))?;
         Ok(Id::new(uuid))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::entities::id::Id;
     use uuid::Uuid;
 
+    use crate::domain::entities::id::Id;
+
     #[derive(Clone)]
-struct TestEntity;
+    struct TestEntity;
 
     #[test]
     fn test_id_new() {

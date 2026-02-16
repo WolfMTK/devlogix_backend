@@ -7,11 +7,7 @@ use validator::{Validate, ValidationError};
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[schema(description = "Request payload to register a new user.")]
 pub struct CreateUserRequest {
-    #[validate(length(
-        min = 6,
-        max = 50,
-        message = "Username must be between 6 and 50 characters"
-    ))]
+    #[validate(length(min = 6, max = 50, message = "Username must be between 6 and 50 characters"))]
     pub username: String,
     #[schema(value_type = String, format = Email, example = "user@example.com")]
     pub email: Email,
@@ -41,11 +37,7 @@ pub struct UpdateUserRequest {
     #[schema(value_type = Option<String>, format = Email, example = "user@example.com")]
     pub email: Option<Email>,
     #[schema(example = "username")]
-    #[validate(length(
-        min = 6,
-        max = 50,
-        message = "Username must be between 6 and 50 characters"
-    ))]
+    #[validate(length(min = 6, max = 50, message = "Username must be between 6 and 50 characters"))]
     pub username: Option<String>,
     #[schema(value_type = Option<String>, example = "OldPassword123!")]
     #[validate(nested)]
@@ -86,10 +78,7 @@ pub struct ValidPassword {
             function = "has_uppercase_letter",
             message = "Password must contain at least one uppercase letter (A-Z)"
         ),
-        custom(
-            function = "has_digit",
-            message = "Password must contain at least one digit (0-9)"
-        ),
+        custom(function = "has_digit", message = "Password must contain at least one digit (0-9)"),
         custom(
             function = "has_special_char",
             message = "Password must contain at least one special character (!@#$%^&* etc.)"
@@ -129,20 +118,15 @@ fn has_special_char(password: &str) -> Result<(), ValidationError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::http::schema::user::{UpdateUserRequest, ValidPassword};
     use rstest::rstest;
     use serde_json::json;
     use validator::Validate;
 
+    use crate::adapter::http::schema::user::{UpdateUserRequest, ValidPassword};
+
     #[rstest]
     fn test_valid_password_success() {
-        let passwords = vec![
-            "Password123!",
-            "MyP@ssw0rd",
-            "Pa0!Pass",
-            "Test123$",
-            "P@!s0Word",
-        ];
+        let passwords = vec!["Password123!", "MyP@ssw0rd", "Pa0!Pass", "Test123$", "P@!s0Word"];
         let all_valid = passwords.iter().all(|&password| {
             if let Ok(valid_pwd) = serde_json::from_value::<ValidPassword>(json!(password)) {
                 valid_pwd.validate().is_ok()
@@ -166,11 +150,7 @@ mod tests {
             Err(_) => true,
         };
 
-        assert!(
-            is_invalid,
-            "Password `{}` should fail ({})",
-            password, message
-        )
+        assert!(is_invalid, "Password `{}` should fail ({})", password, message)
     }
 
     #[rstest]

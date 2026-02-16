@@ -1,14 +1,12 @@
-use crate::application::{
-    app_error::{AppError, AppResult},
-    interface::email::EmailSender
-};
+use std::fs;
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use chrono::Utc;
-use std::{
-    fs,
-    path::PathBuf
-};
 use uuid::Uuid;
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interface::email::EmailSender;
 
 #[derive(Clone)]
 pub struct LocalEmailSender {
@@ -26,13 +24,8 @@ impl LocalEmailSender {
 #[async_trait]
 impl EmailSender for LocalEmailSender {
     async fn send(&self, to: &str, subject: &str, body: &str) -> AppResult<()> {
-        fs::create_dir_all(&self.output_dir)
-            .map_err(|err| AppError::EmailSendError(err.to_string()))?;
-        let file_name = format!(
-            "{}_{}.txt",
-            Utc::now().format("%Y%m%d%H%M%S"),
-            Uuid::now_v7()
-        );
+        fs::create_dir_all(&self.output_dir).map_err(|err| AppError::EmailSendError(err.to_string()))?;
+        let file_name = format!("{}_{}.txt", Utc::now().format("%Y%m%d%H%M%S"), Uuid::now_v7());
         let file_path = self.output_dir.join(file_name);
         let message = format!("To: {to}\nSubject: {subject}\n\n{body}\n");
         fs::write(file_path, message).map_err(|err| AppError::EmailSendError(err.to_string()))?;
@@ -42,10 +35,11 @@ impl EmailSender for LocalEmailSender {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::email::local::LocalEmailSender;
-    use crate::application::interface::email::EmailSender;
     use std::fs;
     use std::path::PathBuf;
+
+    use crate::adapter::email::local::LocalEmailSender;
+    use crate::application::interface::email::EmailSender;
 
     #[tokio::test]
     async fn test_local_email_sender_writes_file() {
@@ -55,16 +49,10 @@ mod tests {
         }
         let email = "ex@example.com";
         let sender = LocalEmailSender::new(&dir);
-        sender
-            .send(email, "subject", "body")
-            .await
-            .expect("send locally");
+        sender.send(email, "subject", "body").await.expect("send locally");
 
         let mut entries = fs::read_dir(&dir).expect("read output dir");
-        let first = entries
-            .next()
-            .expect("one file expected")
-            .expect("valid dir entry");
+        let first = entries.next().expect("one file expected").expect("valid dir entry");
         let text = fs::read_to_string(first.path()).expect("read email file");
 
         assert!(text.contains(&format!("To: {}", email)));

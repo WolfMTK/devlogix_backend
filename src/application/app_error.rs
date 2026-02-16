@@ -1,4 +1,5 @@
-use axum::{extract::rejection::JsonRejection, http::header::InvalidHeaderValue};
+use axum::extract::rejection::JsonRejection;
+use axum::http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -32,13 +33,13 @@ pub enum AppError {
 
     #[error("User already exists")]
     UserAlreadyExists,
-    
+
     #[error("Passwords does not match")]
     InvalidPassword,
-    
+
     #[error("The old password field is empty")]
     OldPasswordEmpty,
-    
+
     #[error("The old password is incorrect")]
     InvalidOldPassword,
 

@@ -1,7 +1,5 @@
-use crate::domain::entities::{
-    id::Id,
-    user::User
-};
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Debug, Clone)]
 struct Profile {

@@ -1,14 +1,14 @@
-use crate::application::app_error::AppError;
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
+use std::collections::BTreeMap;
+
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use serde_json::json;
-use std::collections::BTreeMap;
 use utoipa::ToSchema;
 use validator::{ValidationErrors, ValidationErrorsKind};
+
+use crate::application::app_error::AppError;
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -47,10 +47,7 @@ impl IntoResponse for AppError {
             _ => {
                 let message = match message {
                     Some(msg) => msg,
-                    None => status
-                        .canonical_reason()
-                        .unwrap_or_else(|| "Unknown error")
-                        .to_string(),
+                    None => status.canonical_reason().unwrap_or_else(|| "Unknown error").to_string(),
                 };
 
                 ErrorDetails::Message(message)
@@ -89,10 +86,7 @@ fn build_validation_error_details(errors: &ValidationErrors) -> Option<ErrorDeta
 
     if !global_messages.is_empty() {
         if global_messages.len() == 1 {
-            return global_messages
-                .into_iter()
-                .next()
-                .map(ErrorDetails::Message);
+            return global_messages.into_iter().next().map(ErrorDetails::Message);
         }
         return Some(ErrorDetails::Fields(BTreeMap::from([(
             "general".to_string(),
@@ -125,9 +119,7 @@ fn collect_validation_errors(
                             .message
                             .as_ref()
                             .map(ToString::to_string)
-                            .unwrap_or_else(|| {
-                                format_validation_code(validation_error.code.as_ref())
-                            }),
+                            .unwrap_or_else(|| format_validation_code(validation_error.code.as_ref())),
                     );
 
                     if let Some(field_name) = normalized_field {
@@ -138,33 +130,19 @@ fn collect_validation_errors(
                 });
             }
             ValidationErrorsKind::Struct(struct_errors) => {
-                collect_validation_errors(
-                    struct_errors,
-                    Some(path.as_str()),
-                    field_messages,
-                    global_messages,
-                );
+                collect_validation_errors(struct_errors, Some(path.as_str()), field_messages, global_messages);
             }
             ValidationErrorsKind::List(list_errors) => {
                 list_errors.iter().for_each(|(index, item_errors)| {
                     let list_path = format!("{path}[{index}]");
-                    collect_validation_errors(
-                        item_errors,
-                        Some(list_path.as_str()),
-                        field_messages,
-                        global_messages,
-                    );
+                    collect_validation_errors(item_errors, Some(list_path.as_str()), field_messages, global_messages);
                 });
             }
         }
     });
 }
 
-fn push_unique_field_message(
-    field_messages: &mut BTreeMap<String, Vec<String>>,
-    field_name: String,
-    message: String,
-) {
+fn push_unique_field_message(field_messages: &mut BTreeMap<String, Vec<String>>, field_name: String, message: String) {
     let messages = field_messages.entry(field_name).or_default();
     if !messages.iter().any(|existing| existing == &message) {
         messages.push(message);
@@ -179,10 +157,7 @@ fn push_unique_global_message(global_messages: &mut Vec<String>, message: String
 
 fn map_error_target(path: &str, code: &str, message: String) -> (Option<String>, String) {
     if code == "invalid_password" {
-        return (
-            Some("password".to_string()),
-            "Passwords does not match".to_string(),
-        );
+        return (Some("password".to_string()), "Passwords does not match".to_string());
     }
 
     if code == "old_password_empty" {
@@ -192,11 +167,7 @@ fn map_error_target(path: &str, code: &str, message: String) -> (Option<String>,
         );
     }
 
-    let normalized = path
-        .trim_end_matches(".value")
-        .split('.')
-        .next()
-        .map(str::to_string);
+    let normalized = path.trim_end_matches(".value").split('.').next().map(str::to_string);
 
     match normalized.as_deref() {
         Some("password1") | Some("password2") => (Some("password".to_string()), message),
@@ -208,9 +179,7 @@ fn map_error_target(path: &str, code: &str, message: String) -> (Option<String>,
 
 fn format_validation_code(code: &str) -> String {
     match code {
-        "old_password_empty" => {
-            "The old password field is required when changing password".to_string()
-        }
+        "old_password_empty" => "The old password field is required when changing password".to_string(),
         "invalid_password" => "Passwords does not match".to_string(),
         _ => "Validation failed".to_string(),
     }
@@ -241,10 +210,13 @@ pub struct ErrorResponse {
 
 #[cfg(test)]
 mod tests {
-    use crate::application::app_error::AppError;
-    use axum::{body, http::StatusCode, response::IntoResponse};
+    use axum::body;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
     use serde_json::Value;
     use validator::{Validate, ValidationError};
+
+    use crate::application::app_error::AppError;
 
     #[derive(Validate)]
     struct MultiMessagePasswordValidation {
@@ -268,9 +240,7 @@ mod tests {
         let response = AppError::ValidationError(payload.validate().unwrap_err()).into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let bytes = body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let bytes = body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let json: Value = serde_json::from_slice(&bytes).unwrap();
 
         assert!(json["error"].is_object());
@@ -282,11 +252,7 @@ mod tests {
                 .iter()
                 .any(|v| v == "Password must be at least 8 characters long")
         );
-        assert!(
-            password_errors
-                .iter()
-                .any(|v| v == "Passwords does not match")
-        );
+        assert!(password_errors.iter().any(|v| v == "Passwords does not match"));
         assert!(json["error"].get("password1").is_none());
         assert!(json["error"].get("password2").is_none());
     }
@@ -306,9 +272,7 @@ mod tests {
         let response = AppError::ValidationError(payload.validate().unwrap_err()).into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let bytes = body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let bytes = body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let json: Value = serde_json::from_slice(&bytes).unwrap();
 
         assert!(json["error"].is_object());
@@ -324,10 +288,7 @@ mod tests {
     }
 
     fn require_special(value: &str) -> Result<(), ValidationError> {
-        if value
-            .chars()
-            .any(|c| "!@#$%^&*()_+-=[]{}|;:,.<>?~`".contains(c))
-        {
+        if value.chars().any(|c| "!@#$%^&*()_+-=[]{}|;:,.<>?~`".contains(c)) {
             Ok(())
         } else {
             Err(ValidationError::new("password_no_special_char"))
@@ -370,9 +331,7 @@ mod tests {
         let response = AppError::ValidationError(payload.validate().unwrap_err()).into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let bytes = body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let bytes = body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let json: Value = serde_json::from_slice(&bytes).unwrap();
 
         let password_errors = json["error"]["password"].as_array().unwrap();
@@ -383,9 +342,9 @@ mod tests {
                 .any(|v| v == "Password must contain at least one uppercase letter (A-Z)")
         );
         assert!(
-            password_errors.iter().any(
-                |v| v == "Password must contain at least one special character (!@#$%^&* etc.)"
-            )
+            password_errors
+                .iter()
+                .any(|v| v == "Password must contain at least one special character (!@#$%^&* etc.)")
         );
     }
 }

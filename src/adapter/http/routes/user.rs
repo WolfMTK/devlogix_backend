@@ -1,24 +1,17 @@
-use crate::{
-    adapter::http::{
-        app_error_impl::ErrorResponse,
-        middleware::extractor::AuthUser,
-        schema::{
-            auth::MessageResponse,
-            id::IdResponse,
-            user::{CreateUserRequest, GetUserResponse, UpdateUserRequest},
-        },
-        validation::ValidJson
-    },
-    application::{
-        app_error::AppResult,
-        dto::{
-            id::IdDTO,
-            user::{CreateUserDTO, UpdateUserDTO},
-        },
-        interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor},
-    }
-};
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+
+use crate::adapter::http::app_error_impl::ErrorResponse;
+use crate::adapter::http::middleware::extractor::AuthUser;
+use crate::adapter::http::schema::auth::MessageResponse;
+use crate::adapter::http::schema::id::IdResponse;
+use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
+use crate::adapter::http::validation::ValidJson;
+use crate::application::app_error::AppResult;
+use crate::application::dto::id::IdDTO;
+use crate::application::dto::user::{CreateUserDTO, UpdateUserDTO};
+use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 
 #[utoipa::path(
     post,
@@ -88,7 +81,6 @@ pub async fn register(
     Ok((StatusCode::OK, Json(response)))
 }
 
-
 #[utoipa::path(
     get,
     path = "/users/me",
@@ -131,13 +123,8 @@ pub async fn register(
     ),
     security(("cookieAuth" = []))
 )]
-pub async fn get_me(
-    auth_user: AuthUser,
-    interactor: GetMeInteractor,
-) -> AppResult<impl IntoResponse> {
-    let dto = IdDTO {
-        id: auth_user.user_id,
-    };
+pub async fn get_me(auth_user: AuthUser, interactor: GetMeInteractor) -> AppResult<impl IntoResponse> {
+    let dto = IdDTO { id: auth_user.user_id };
     let user = interactor.execute(dto).await?;
     let response = GetUserResponse {
         id: user.id,
@@ -148,8 +135,6 @@ pub async fn get_me(
     };
     Ok((StatusCode::OK, Json(response)))
 }
-
-
 
 #[utoipa::path(
     patch,
@@ -225,15 +210,9 @@ pub async fn update_user(
         id: auth_user.user_id,
         username: payload.username,
         email: payload.email.map(|email| email.to_string()),
-        old_password: payload
-            .old_password
-            .map(|password| password.value().to_string()),
-        password1: payload
-            .password1
-            .map(|password| password.value().to_string()),
-        password2: payload
-            .password2
-            .map(|password| password.value().to_string()),
+        old_password: payload.old_password.map(|password| password.value().to_string()),
+        password1: payload.password1.map(|password| password.value().to_string()),
+        password2: payload.password2.map(|password| password.value().to_string()),
     };
     interactor.execute(dto).await?;
     Ok((
@@ -246,29 +225,25 @@ pub async fn update_user(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_me, register, update_user};
-    use crate::{
-        adapter::http::{
-            middleware::extractor::AuthUser,
-            schema::user::{CreateUserRequest, UpdateUserRequest},
-            validation::ValidJson,
-        },
-        application::{
-            app_error::AppResult,
-            interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor},
-            interface::{
-                crypto::CredentialsHasher,
-                db::DBSession,
-                gateway::user::{UserReader, UserWriter},
-            },
-        },
-        domain::entities::{id::Id, user::User},
-    };
+    use std::sync::Arc;
+
     use async_trait::async_trait;
-    use axum::{http::StatusCode, response::IntoResponse};
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
     use mockall::mock;
     use serde_json::json;
-    use std::sync::Arc;
+
+    use super::{get_me, register, update_user};
+    use crate::adapter::http::middleware::extractor::AuthUser;
+    use crate::adapter::http::schema::user::{CreateUserRequest, UpdateUserRequest};
+    use crate::adapter::http::validation::ValidJson;
+    use crate::application::app_error::AppResult;
+    use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
+    use crate::application::interface::crypto::CredentialsHasher;
+    use crate::application::interface::db::DBSession;
+    use crate::application::interface::gateway::user::{UserReader, UserWriter};
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::user::User;
 
     mock! {
         pub DBSessionMock {}
@@ -316,17 +291,11 @@ mod tests {
             }
         }
 
-        fn expect_is_user(
-            &mut self,
-            f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static,
-        ) {
+        fn expect_is_user(&mut self, f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static) {
             self.is_user_fn = Some(Box::new(move |(u, e)| f(&u, &e)));
         }
 
-        fn expect_find_by_id(
-            &mut self,
-            f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_id_fn = Some(Box::new(move |id| {
                 let user_id: Id<User> = id.try_into().expect("valid uuid");
                 f(&user_id)
@@ -351,17 +320,11 @@ mod tests {
         }
 
         async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
-            (self.is_user_fn.as_ref().expect("is_user must be mocked"))((
-                username.to_string(),
-                email.to_string(),
-            ))
+            (self.is_user_fn.as_ref().expect("is_user must be mocked"))((username.to_string(), email.to_string()))
         }
 
         async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
-            (self
-                .find_by_id_fn
-                .as_ref()
-                .expect("find_by_id must be mocked"))(user_id.value.to_string())
+            (self.find_by_id_fn.as_ref().expect("find_by_id must be mocked"))(user_id.value.to_string())
         }
 
         async fn is_username_or_email_unique(
@@ -382,11 +345,7 @@ mod tests {
     }
 
     fn sample_user() -> User {
-        let mut user = User::new(
-            "Test".to_string(),
-            "ex@example.com".to_string(),
-            "hashed_password".to_string(),
-        );
+        let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "hashed_password".to_string());
         user.id = Id::<User>::generate();
         user
     }
@@ -399,9 +358,7 @@ mod tests {
         let mut hasher = MockHasherMock::new();
 
         user_reader.expect_is_user(|_, _| Ok(false));
-        hasher
-            .expect_hash_password()
-            .returning(|_| Ok("password".to_string()));
+        hasher.expect_hash_password().returning(|_| Ok("password".to_string()));
         user_writer.expect_insert().returning(|user| Ok(user.id));
         db_session.expect_commit().returning(|| Ok(()));
 
@@ -436,11 +393,7 @@ mod tests {
 
         let expected_user_id_for_closure = expected_user_id.clone();
         user_reader.expect_find_by_id(move |_| {
-            let mut user = User::new(
-                "Test".to_string(),
-                "ex@example.com".to_string(),
-                "hashed_password".to_string(),
-            );
+            let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "hashed_password".to_string());
             user.id = expected_user_id_for_closure.clone().try_into().unwrap();
             Ok(Some(user))
         });
@@ -470,11 +423,7 @@ mod tests {
 
         user_reader.expect_is_unique(|_, _, _| Ok(false));
         user_reader.expect_find_by_id(move |_| {
-            let mut user = User::new(
-                "Test".to_string(),
-                "ex@example.com".to_string(),
-                "password".to_string(),
-            );
+            let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string());
             user.id = existing_user_id.clone().try_into().unwrap();
             Ok(Some(user))
         });

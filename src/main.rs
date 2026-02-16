@@ -3,14 +3,14 @@ mod application;
 mod domain;
 mod infra;
 
-use crate::infra::{
-    app::create_app,
-    config::AppConfig,
-    init_app_state,
-    setup::init_tracing
-};
 use std::env;
+
 use tracing::info;
+
+use crate::infra::app::create_app;
+use crate::infra::config::AppConfig;
+use crate::infra::init_app_state;
+use crate::infra::setup::init_tracing;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

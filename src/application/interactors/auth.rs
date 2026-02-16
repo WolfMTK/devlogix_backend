@@ -1,19 +1,18 @@
-use crate::{
-    application::{
-        app_error::{AppError, AppResult},
-        dto::auth::{GetSessionIdDTO, LoginDTO},
-        dto::id::IdDTO,
-        interface::{
-            crypto::CredentialsHasher,
-            db::DBSession,
-            gateway::{session::SessionWriter, user::UserReader},
-        },
-    },
-    domain::entities::{id::Id, session::Session, user::User},
-};
-use chrono::Utc;
 use std::sync::Arc;
+
+use chrono::Utc;
 use tracing::{info, warn};
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::auth::{GetSessionIdDTO, LoginDTO};
+use crate::application::dto::id::IdDTO;
+use crate::application::interface::crypto::CredentialsHasher;
+use crate::application::interface::db::DBSession;
+use crate::application::interface::gateway::session::SessionWriter;
+use crate::application::interface::gateway::user::UserReader;
+use crate::domain::entities::id::Id;
+use crate::domain::entities::session::Session;
+use crate::domain::entities::user::User;
 
 #[derive(Clone)]
 pub struct LoginInteractor {
@@ -39,18 +38,11 @@ impl LoginInteractor {
     }
 
     pub async fn execute(&self, dto: LoginDTO) -> AppResult<GetSessionIdDTO> {
-        let user = self
-            .user_reader
-            .find_by_email(&dto.email)
-            .await?
-            .ok_or_else(|| {
-                warn!("Login attempt with non-existent email: {}", dto.email);
-                AppError::InvalidCredentials
-            })?;
-        let is_valid = self
-            .hasher
-            .verify_password(&dto.password, &user.password)
-            .await?;
+        let user = self.user_reader.find_by_email(&dto.email).await?.ok_or_else(|| {
+            warn!("Login attempt with non-existent email: {}", dto.email);
+            AppError::InvalidCredentials
+        })?;
+        let is_valid = self.hasher.verify_password(&dto.password, &user.password).await?;
         if !is_valid {
             warn!("Invalid password for user: {}", user.username);
             return Err(AppError::InvalidCredentials);
@@ -102,24 +94,24 @@ impl LogoutInteractor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        application::{
-            app_error::{AppError, AppResult},
-            dto::{auth::LoginDTO, id::IdDTO},
-            interactors::auth::{LoginInteractor, LogoutInteractor},
-            interface::{
-                crypto::CredentialsHasher,
-                db::DBSession,
-                gateway::{session::SessionWriter, user::UserReader},
-            },
-        },
-        domain::entities::{id::Id, session::Session, user::User},
-    };
+    use std::sync::Arc;
+
     use async_trait::async_trait;
     use chrono::Utc;
     use mockall::mock;
     use rstest::{fixture, rstest};
-    use std::sync::Arc;
+
+    use crate::application::app_error::{AppError, AppResult};
+    use crate::application::dto::auth::LoginDTO;
+    use crate::application::dto::id::IdDTO;
+    use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
+    use crate::application::interface::crypto::CredentialsHasher;
+    use crate::application::interface::db::DBSession;
+    use crate::application::interface::gateway::session::SessionWriter;
+    use crate::application::interface::gateway::user::UserReader;
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::session::Session;
+    use crate::domain::entities::user::User;
 
     // Mocks
     mock! {
@@ -139,15 +131,10 @@ mod tests {
 
     impl MockUserReader {
         fn new() -> Self {
-            Self {
-                find_by_email_fn: None,
-            }
+            Self { find_by_email_fn: None }
         }
 
-        fn expect_find_by_email(
-            &mut self,
-            f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_email_fn = Some(Box::new(move |e| f(&e)));
         }
     }
@@ -155,10 +142,7 @@ mod tests {
     #[async_trait]
     impl UserReader for MockUserReader {
         async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self
-                .find_by_email_fn
-                .as_ref()
-                .expect("find_by_email not mocked"))(email.to_string())
+            (self.find_by_email_fn.as_ref().expect("find_by_email not mocked"))(email.to_string())
         }
 
         async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
@@ -332,9 +316,7 @@ mod tests {
             id: USER_ID.to_string(),
         };
 
-        session_writer
-            .expect_delete_by_user_id()
-            .returning(|_| Ok(()));
+        session_writer.expect_delete_by_user_id().returning(|_| Ok(()));
         db_session.expect_commit().returning(|| Ok(()));
 
         let interactor = LogoutInteractor::new(Arc::new(db_session), Arc::new(session_writer));
@@ -348,9 +330,7 @@ mod tests {
     async fn test_logout_invalid_id() {
         let db_session = MockDBSessionMock::new();
         let session_writer = MockSessionWriterMock::new();
-        let user_id = IdDTO {
-            id: "uuid".to_string(),
-        };
+        let user_id = IdDTO { id: "uuid".to_string() };
 
         let interactor = LogoutInteractor::new(Arc::new(db_session), Arc::new(session_writer));
         let result = interactor.execute(user_id).await;

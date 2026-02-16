@@ -1,12 +1,12 @@
-use crate::application::{
-    app_error::{AppError, AppResult},
-    interface::db::DBSession,
-};
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use sqlx::{Pool, Postgres, Transaction};
-use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interface::db::DBSession;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionState {
@@ -39,8 +39,7 @@ impl SqlxSession {
 
     pub async fn with_tx<F, T>(&self, f: F) -> AppResult<T>
     where
-        F: for<'a> FnOnce(&'a mut Transaction<'static, Postgres>) -> BoxFuture<'a, AppResult<T>>
-            + Send,
+        F: for<'a> FnOnce(&'a mut Transaction<'static, Postgres>) -> BoxFuture<'a, AppResult<T>> + Send,
         T: Send,
     {
         // TODO: Review the implementation (deadlock?)

@@ -1,5 +1,6 @@
-use crate::domain::entities::id::Id;
 use chrono::{DateTime, Utc};
+
+use crate::domain::entities::id::Id;
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -43,4 +44,3 @@ pub struct UserInput {
     updated_at: DateTime<Utc>,
     created_at: DateTime<Utc>,
 }
-

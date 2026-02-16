@@ -1,20 +1,15 @@
-use crate::{
-    application::{
-        app_error::{AppError, AppResult},
-        dto::{
-            id::IdDTO,
-            user::{CreateUserDTO, UpdateUserDTO, UserDTO},
-        },
-        interface::{
-            crypto::CredentialsHasher,
-            db::DBSession,
-            gateway::user::{UserReader, UserWriter},
-        },
-    },
-    domain::entities::{id::Id, user::User},
-};
 use std::sync::Arc;
+
 use tracing::{error, info};
+
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::id::IdDTO;
+use crate::application::dto::user::{CreateUserDTO, UpdateUserDTO, UserDTO};
+use crate::application::interface::crypto::CredentialsHasher;
+use crate::application::interface::db::DBSession;
+use crate::application::interface::gateway::user::{UserReader, UserWriter};
+use crate::domain::entities::id::Id;
+use crate::domain::entities::user::User;
 
 #[derive(Clone)]
 pub struct CreateUserInteractor {
@@ -48,10 +43,7 @@ impl CreateUserInteractor {
         let user_id = match self.user_writer.insert(user).await {
             Ok(id) => id.value.to_string(),
             Err(err) => {
-                error!(
-                    "The {} has not been created created. Error: {}",
-                    username, err
-                );
+                error!("The {} has not been created created. Error: {}", username, err);
                 return Err(err);
             }
         };
@@ -88,14 +80,10 @@ impl GetMeInteractor {
 
     pub async fn execute(&self, dto: IdDTO) -> AppResult<UserDTO> {
         let user_id: Id<User> = dto.id.try_into()?;
-        let user = self
-            .user_reader
-            .find_by_id(&user_id)
-            .await?
-            .ok_or_else(|| {
-                error!("User not found for authenticated session {:?}", user_id);
-                AppError::InvalidCredentials
-            })?;
+        let user = self.user_reader.find_by_id(&user_id).await?.ok_or_else(|| {
+            error!("User not found for authenticated session {:?}", user_id);
+            AppError::InvalidCredentials
+        })?;
         Ok(UserDTO {
             id: user.id.value.to_string(),
             username: user.username,
@@ -136,8 +124,7 @@ impl UpdateUserInteractor {
         let user = self.user_reader.find_by_id(&user_id).await?;
         match user {
             Some(mut user) => {
-                self.check_old_password(dto.old_password, &user.password)
-                    .await?;
+                self.check_old_password(dto.old_password, &user.password).await?;
                 if let Some(username) = dto.username {
                     user.username = username;
                 }
@@ -172,11 +159,7 @@ impl UpdateUserInteractor {
         Ok(())
     }
 
-    async fn check_old_password(
-        &self,
-        old_password: Option<String>,
-        password: &str,
-    ) -> AppResult<()> {
+    async fn check_old_password(&self, old_password: Option<String>, password: &str) -> AppResult<()> {
         if let Some(pwd) = old_password {
             if !self.hasher.verify_password(&pwd, password).await? {
                 return Err(AppError::InvalidOldPassword);
@@ -188,27 +171,22 @@ impl UpdateUserInteractor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        application::{
-            app_error::{AppError, AppResult},
-            dto::{
-                id::IdDTO,
-                user::{CreateUserDTO, UpdateUserDTO},
-            },
-            interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor},
-            interface::{
-                crypto::CredentialsHasher,
-                db::DBSession,
-                gateway::user::{UserReader, UserWriter},
-            },
-        },
-        domain::entities::{id::Id, user::User},
-    };
+    use std::sync::Arc;
+
     use async_trait::async_trait;
     use mockall::mock;
     use rstest::{fixture, rstest};
-    use std::sync::Arc;
     use uuid::Uuid;
+
+    use crate::application::app_error::{AppError, AppResult};
+    use crate::application::dto::id::IdDTO;
+    use crate::application::dto::user::{CreateUserDTO, UpdateUserDTO};
+    use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
+    use crate::application::interface::crypto::CredentialsHasher;
+    use crate::application::interface::db::DBSession;
+    use crate::application::interface::gateway::user::{UserReader, UserWriter};
+    use crate::domain::entities::id::Id;
+    use crate::domain::entities::user::User;
 
     // Mocks
     mock! {
@@ -259,26 +237,17 @@ mod tests {
             }
         }
 
-        fn expect_is_user(
-            &mut self,
-            f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static,
-        ) {
+        fn expect_is_user(&mut self, f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static) {
             self.is_user_fn = Some(Box::new(move |(u, e)| f(&u, &e)));
         }
 
         #[allow(dead_code)]
-        fn expect_find_by_id(
-            &mut self,
-            f: impl Fn(uuid::Uuid) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_id(&mut self, f: impl Fn(uuid::Uuid) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_id_fn = Some(Box::new(f));
         }
 
         #[allow(dead_code)]
-        fn expect_find_by_email(
-            &mut self,
-            f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static,
-        ) {
+        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
             self.find_by_email_fn = Some(Box::new(move |e| f(&e)));
         }
 
@@ -291,17 +260,11 @@ mod tests {
     #[async_trait]
     impl UserReader for MockUserReader {
         async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self
-                .find_by_email_fn
-                .as_ref()
-                .expect("find_by_email not mocked"))(email.to_string())
+            (self.find_by_email_fn.as_ref().expect("find_by_email not mocked"))(email.to_string())
         }
 
         async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
-            (self.is_user_fn.as_ref().expect("is_user not mocked"))((
-                username.to_string(),
-                email.to_string(),
-            ))
+            (self.is_user_fn.as_ref().expect("is_user not mocked"))((username.to_string(), email.to_string()))
         }
 
         async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
@@ -331,11 +294,7 @@ mod tests {
     // Fixtures
     #[fixture]
     fn valid_user() -> User {
-        let mut user = User::new(
-            USERNAME.to_owned(),
-            EMAIL.to_owned(),
-            HASHED_PASSWORD.to_owned(),
-        );
+        let mut user = User::new(USERNAME.to_owned(), EMAIL.to_owned(), HASHED_PASSWORD.to_owned());
         let user_id: Id<User> = USER_ID.to_string().try_into().unwrap();
         user.id = user_id;
         user
@@ -431,29 +390,21 @@ mod tests {
         deps.hasher
             .expect_hash_password()
             .returning(|_| Ok(HASHED_PASSWORD.to_string()));
-        deps.user_writer
-            .expect_insert()
-            .returning(|user| Ok(user.id.clone()));
+        deps.user_writer.expect_insert().returning(|user| Ok(user.id.clone()));
         deps.db_session.expect_commit().returning(|| Ok(()));
     }
 
     fn setup_update_happy_path(deps: &mut InteractorDeps, user: User) {
         deps.user_reader.expect_is_unique(|| Ok(false));
-        deps.user_reader
-            .expect_find_by_id(move |_| Ok(Some(user.clone())));
-        deps.user_writer
-            .expect_update()
-            .returning(|user| Ok(user.id.clone()));
+        deps.user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
+        deps.user_writer.expect_update().returning(|user| Ok(user.id.clone()));
         deps.db_session.expect_commit().returning(|| Ok(()));
     }
 
     // CreateUserInteractor tests
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_success(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_success(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         setup_create_happy_path(&mut deps);
         let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_create_user_dto).await;
@@ -465,10 +416,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_password_mismatch(
-        mismatched_passwords_dto: CreateUserDTO,
-        deps: InteractorDeps,
-    ) {
+    async fn test_create_user_password_mismatch(mismatched_passwords_dto: CreateUserDTO, deps: InteractorDeps) {
         let interactor = deps.create_user_interactor();
         let result = interactor.execute(mismatched_passwords_dto).await;
         assert!(result.is_err());
@@ -477,10 +425,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_already_exists(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_already_exists(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader.expect_is_user(|_, _| Ok(true));
         let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_create_user_dto).await;
@@ -490,10 +435,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_hash_error(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_hash_error(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader.expect_is_user(|_, _| Ok(false));
         deps.hasher
             .expect_hash_password()
@@ -506,10 +448,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_insert_db_error(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_insert_db_error(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader.expect_is_user(|_, _| Ok(false));
         deps.hasher
             .expect_hash_password()
@@ -525,35 +464,24 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_commit_error(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_commit_error(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader.expect_is_user(|_, _| Ok(false));
         deps.hasher
             .expect_hash_password()
             .returning(|_| Ok(HASHED_PASSWORD.to_string()));
-        deps.user_writer
-            .expect_insert()
-            .returning(|user| Ok(user.id.clone()));
+        deps.user_writer.expect_insert().returning(|user| Ok(user.id.clone()));
         deps.db_session
             .expect_commit()
             .returning(|| Err(AppError::SessionAlreadyCommitted));
         let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_create_user_dto).await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            AppError::SessionAlreadyCommitted
-        ));
+        assert!(matches!(result.unwrap_err(), AppError::SessionAlreadyCommitted));
     }
 
     #[rstest]
     #[tokio::test]
-    async fn test_create_user_reader_db_error(
-        valid_create_user_dto: CreateUserDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_create_user_reader_db_error(valid_create_user_dto: CreateUserDTO, mut deps: InteractorDeps) {
         deps.user_reader
             .expect_is_user(|_, _| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
         let interactor = deps.create_user_interactor();
@@ -603,11 +531,7 @@ mod tests {
     // GetMeInteractor tests
     #[rstest]
     #[tokio::test]
-    async fn test_get_me_success(
-        valid_user: User,
-        valid_user_id_dto: IdDTO,
-        mut deps: InteractorDeps,
-    ) {
+    async fn test_get_me_success(valid_user: User, valid_user_id_dto: IdDTO, mut deps: InteractorDeps) {
         deps.user_reader
             .expect_find_by_id(move |_| Ok(Some(valid_user.clone())));
         let interactor = deps.get_me_interactor();
@@ -677,15 +601,11 @@ mod tests {
         deps.user_reader.expect_is_unique(|| Ok(false));
         deps.user_reader
             .expect_find_by_id(move |_| Ok(Some(valid_user.clone())));
-        deps.hasher
-            .expect_verify_password()
-            .returning(|_, _| Ok(true));
+        deps.hasher.expect_verify_password().returning(|_, _| Ok(true));
         deps.hasher
             .expect_hash_password()
             .returning(|_| Ok(HASHED_PASSWORD.to_string()));
-        deps.user_writer
-            .expect_update()
-            .returning(|user| Ok(user.id.clone()));
+        deps.user_writer.expect_update().returning(|user| Ok(user.id.clone()));
         deps.db_session.expect_commit().returning(|| Ok(()));
         valid_update_user_dto.old_password = Some(PASSWORD.to_string());
         valid_update_user_dto.password1 = Some("NewPassword123!".to_string());
@@ -706,9 +626,7 @@ mod tests {
         deps.user_reader
             .expect_find_by_id(move |_| Ok(Some(valid_user.clone())));
 
-        deps.hasher
-            .expect_verify_password()
-            .returning(|_, _| Ok(false));
+        deps.hasher.expect_verify_password().returning(|_, _| Ok(false));
 
         valid_update_user_dto.old_password = Some("WrongPassword".to_string());
         valid_update_user_dto.password1 = Some("NewPassword123!".to_string());
@@ -736,10 +654,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_update_user_not_found(
-        mut deps: InteractorDeps,
-        valid_update_user_dto: UpdateUserDTO,
-    ) {
+    async fn test_update_user_not_found(mut deps: InteractorDeps, valid_update_user_dto: UpdateUserDTO) {
         deps.user_reader.expect_is_unique(|| Ok(false));
         deps.user_reader.expect_find_by_id(|_| Ok(None));
 
