@@ -1,6 +1,12 @@
 use crate::{
     application::app_error::AppResult,
-    domain::entities::{email_confirmation::EmailConfirmation, id::Id},
+    domain::{
+        entities::{
+            email_confirmation::EmailConfirmation,
+            id::Id,
+            user::User
+        }
+    }
 };
 use async_trait::async_trait;
 
@@ -11,6 +17,7 @@ pub trait EmailConfirmationWriter: Send + Sync {
         email_confirmation: EmailConfirmation,
     ) -> AppResult<Id<EmailConfirmation>>;
     async fn confirm(&self, confirmation_id: &Id<EmailConfirmation>) -> AppResult<()>;
+    async fn delete(&self, user_id: &Id<User>)  -> AppResult<()>;
 }
 
 #[async_trait]

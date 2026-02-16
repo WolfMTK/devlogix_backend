@@ -1,3 +1,4 @@
+use crate::domain::entities::user::User;
 use crate::{
     adapter::db::session::SqlxSession,
     application::{
@@ -10,7 +11,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::{postgres::PgRow, Row};
+use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -87,6 +88,26 @@ impl EmailConfirmationWriter for EmailConfirmationGateway {
                     "#,
                     )
                     .bind(confirmation_id)
+                    .execute(tx.as_mut())
+                    .await?;
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await
+    }
+    async fn delete(&self, user_id: &Id<User>) -> AppResult<()> {
+        self.session
+            .with_tx(|tx| {
+                let user_id = user_id.value.clone();
+                async move {
+                    sqlx::query(
+                        r#"
+                            DELETE FROM email_confirmations
+                            WHERE user_id = $1
+                        "#,
+                    )
+                    .bind(user_id)
                     .execute(tx.as_mut())
                     .await?;
                     Ok(())

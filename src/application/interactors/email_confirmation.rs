@@ -109,6 +109,9 @@ impl ResendConfirmationInteractor {
         if user.is_confirmed {
             return Err(AppError::EmailAlreadyConfirmed);
         }
+        self.email_confirmation_writer
+            .delete(&user.id.clone())
+            .await?;
         let token = Uuid::now_v7();
         let confirmation = EmailConfirmation::new(user.id, token.to_string().clone(), dto.ttl);
         self.email_confirmation_writer.insert(confirmation).await?;
@@ -152,10 +155,10 @@ mod tests {
                 gateway::{
                     email_confirmation::{EmailConfirmationReader, EmailConfirmationWriter},
                     user::{UserReader, UserWriter},
-                }
+                },
             },
         },
-        domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User}
+        domain::entities::{email_confirmation::EmailConfirmation, id::Id, user::User},
     };
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
