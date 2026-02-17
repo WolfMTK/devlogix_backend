@@ -126,7 +126,7 @@ impl PasswordResetTokenReader for PasswordResetTokenGateway {
                         r#"
                             SELECT id, user_id, token, expires_at, used_at, created_at
                             FROM password_reset_tokens
-                            WHERE token = &1
+                            WHERE token = $1
                         "#,
                     )
                     .bind(token)
