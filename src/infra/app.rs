@@ -73,7 +73,7 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
         .route("/resend-confirmation", post(resend_confirmation))
         .route("/confirm-email", get(confirm_email))
         .route("/forgot-password", post(forgot_password))
-        .route("/reset_password", post(reset_password));
+        .route("/reset-password", post(reset_password));
 
     let protected_routes = Router::new()
         .route("/logout", post(logout))
