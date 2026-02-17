@@ -57,6 +57,15 @@ pub enum AppError {
 
     #[error("Email send error: {0}")]
     EmailSendError(String),
+
+    #[error("Invalid or expired password reset token")]
+    InvalidResetToken,
+
+    #[error("Password reset token has already has been used")]
+    ResetTokenAlreadyUsed,
+
+    #[error("Password reset token has expired")]
+    ResetTokenExpired,
 }
 
 pub type AppResult<T> = Result<T, AppError>;

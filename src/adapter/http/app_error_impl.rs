@@ -25,6 +25,9 @@ impl IntoResponse for AppError {
             AppError::InvalidConfirmationToken => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ConfirmationTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::EmailSendError(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidResetToken => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::ResetTokenAlreadyUsed => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::ResetTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
 
             // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
