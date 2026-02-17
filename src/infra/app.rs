@@ -9,7 +9,9 @@ use uuid::Uuid;
 
 use crate::adapter::http::docs::{docs_ui, openapi_json};
 use crate::adapter::http::middleware::auth::{auth_middleware, session_cookie_middleware};
-use crate::adapter::http::routes::auth::{confirm_email, login, logout, resend_confirmation};
+use crate::adapter::http::routes::auth::{
+    confirm_email, forgot_password, login, logout, resend_confirmation, reset_password,
+};
 use crate::adapter::http::routes::user::{get_me, register, update_user};
 use crate::infra::config::AppConfig;
 use crate::infra::state::AppState;
@@ -69,7 +71,9 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
     let public_routes = Router::new()
         .route("/login", post(login))
         .route("/resend-confirmation", post(resend_confirmation))
-        .route("/confirm-email", get(confirm_email));
+        .route("/confirm-email", get(confirm_email))
+        .route("/forgot-password", post(forgot_password))
+        .route("/reset_password", post(reset_password));
 
     let protected_routes = Router::new()
         .route("/logout", post(logout))
