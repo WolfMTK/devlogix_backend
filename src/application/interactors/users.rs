@@ -578,6 +578,8 @@ mod tests {
     }
 
     // UpdateUserInteractor tests
+    #[rstest]
+    #[tokio::test]
     async fn test_update_user_success_username_email(
         mut deps: InteractorDeps,
         mut valid_update_user_dto: UpdateUserDTO,
