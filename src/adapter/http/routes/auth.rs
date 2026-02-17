@@ -11,12 +11,16 @@ use crate::adapter::http::middleware::auth::{build_logout_cookie, build_session_
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
 use crate::adapter::http::schema::email_confirmation::ConfirmEmailQuery;
+use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
+use crate::adapter::http::validation::ValidJson;
 use crate::application::app_error::AppResult;
 use crate::application::dto::auth::LoginDTO;
 use crate::application::dto::email_confirmation::{ConfirmEmailDTO, ResendConfirmationDTO};
 use crate::application::dto::id::IdDTO;
+use crate::application::dto::password_reset::{RequestPasswordResetDTO, ResetPasswordDTO};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
 use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
+use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
 use crate::infra::config::AppConfig;
 
 #[utoipa::path(
@@ -224,7 +228,7 @@ pub async fn confirm_email(
     request_body(
         content = ResendConfirmationRequest,
         example = json!(
-        {
+            {
                 "email": "user@example.com"
             }
         )
@@ -293,6 +297,127 @@ pub async fn resend_confirmation(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/forgot-password",
+    tag = "Auth",
+    request_body(
+        content = ForgotPasswordResetRequest,
+        example = json!(
+            {
+                "email": "user@example.com"
+            }
+        )
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Sending a password reset link",
+            body = MessageResponse,
+            example = json!(
+                {
+                    "message": "The link with password reset has been sent to the email"
+                }
+            )
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!(
+                {
+                    "error": "Internal Server Error"
+                }
+            )
+        )
+    )
+)]
+pub async fn forgot_password(
+    interactor: RequestPasswordResetInteractor,
+    State(config): State<Arc<AppConfig>>,
+    Json(payload): Json<ForgotPasswordResetRequest>,
+) -> AppResult<impl IntoResponse> {
+    interactor
+        .execute(RequestPasswordResetDTO {
+            email: payload.email.to_string(),
+            ttl: config.password_reset.ttl,
+            reset_url: config.password_reset.reset_url.clone(),
+        })
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "The link with password reset has been sent to the email".to_string(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/reset-password",
+    tag = "Auth",
+    request_body(
+        content = ResetPasswordRequest,
+        example = json!(
+            {
+                "token": "019c47ec-2160-7e53-bf7e-06db2a1bad85",
+                "password": "NewPassword123!"
+            }
+        )
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Password reset successfully",
+            body = MessageResponse,
+            example = json!(
+                {
+                    "message": "Password has been reset successfully"
+                }
+            )
+        ),
+        (
+            status = 400,
+            description = "Invalid, expired or already used token",
+            body = ErrorResponse,
+            example = json!(
+                {
+                    "error": "Invalid or expired password reset token"
+                }
+            )
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!(
+                {
+                    "error": "Internal Server Error"
+                }
+            )
+        )
+    )
+)]
+pub async fn reset_password(
+    interactor: ResetPasswordInteractor,
+    ValidJson(payload): ValidJson<ResetPasswordRequest>,
+) -> AppResult<impl IntoResponse> {
+    interactor
+        .execute(ResetPasswordDTO {
+            token: payload.token,
+            password: payload.password.value().to_string(),
+        })
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Password has been reset successfully".to_string(),
+        }),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -307,28 +432,33 @@ mod tests {
     use mockall::mock;
     use serde_json::json;
 
-    use super::{confirm_email, login, logout, resend_confirmation};
+    use super::{confirm_email, forgot_password, login, logout, resend_confirmation, reset_password};
     use crate::adapter::http::middleware::extractor::AuthUser;
     use crate::adapter::http::schema::auth::{LoginRequest, ResendConfirmationRequest};
     use crate::adapter::http::schema::email_confirmation::ConfirmEmailQuery;
+    use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
+    use crate::adapter::http::validation::ValidJson;
     use crate::application::app_error::AppResult;
     use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
     use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
+    use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
     use crate::application::interface::crypto::CredentialsHasher;
     use crate::application::interface::db::DBSession;
     use crate::application::interface::email::EmailSender;
     use crate::application::interface::gateway::email_confirmation::{
         EmailConfirmationReader, EmailConfirmationWriter,
     };
+    use crate::application::interface::gateway::password_reset::{PasswordResetTokenReader, PasswordResetTokenWriter};
     use crate::application::interface::gateway::session::SessionWriter;
     use crate::application::interface::gateway::user::{UserReader, UserWriter};
     use crate::domain::entities::email_confirmation::EmailConfirmation;
     use crate::domain::entities::id::Id;
+    use crate::domain::entities::password_reset::PasswordResetToken;
     use crate::domain::entities::session::Session;
     use crate::domain::entities::user::User;
     use crate::infra::config::{
-        AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig, SMTPConfig,
-        SessionConfig,
+        AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig,
+        PasswordResetConfig, SMTPConfig, SessionConfig,
     };
 
     mock! {
@@ -337,60 +467,6 @@ mod tests {
         #[async_trait]
         impl DBSession for DBSessionMock {
             async fn commit(&self) -> AppResult<()>;
-        }
-    }
-
-    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
-
-    struct MockUserReader {
-        find_by_email_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
-        find_by_id_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
-    }
-
-    impl MockUserReader {
-        fn new() -> Self {
-            Self {
-                find_by_email_fn: None,
-                find_by_id_fn: None,
-            }
-        }
-
-        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
-            self.find_by_email_fn = Some(Box::new(move |email| f(&email)));
-        }
-
-        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
-            self.find_by_id_fn = Some(Box::new(move |id| {
-                let user_id: Id<User> = id.try_into().expect("valid uuid");
-                f(&user_id)
-            }));
-        }
-    }
-
-    #[async_trait]
-    impl UserReader for MockUserReader {
-        async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self.find_by_email_fn.as_ref().expect("find_by_email must be mocked"))(email.to_string())
-        }
-
-        async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
-            Ok(false)
-        }
-
-        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
-            match &self.find_by_id_fn {
-                Some(f) => f(user_id.value.to_string()),
-                None => Ok(None),
-            }
-        }
-
-        async fn is_username_or_email_unique(
-            &self,
-            _user_id: &Id<User>,
-            _username: Option<&str>,
-            _email: Option<&str>,
-        ) -> AppResult<bool> {
-            Ok(false)
         }
     }
 
@@ -456,6 +532,80 @@ mod tests {
         }
     }
 
+    mock! {
+        pub PasswordResetTokenWriterMock {}
+
+        #[async_trait]
+        impl PasswordResetTokenWriter for PasswordResetTokenWriterMock {
+            async fn insert(&self, token: PasswordResetToken) -> AppResult<Id<PasswordResetToken>>;
+            async fn mark_as_used(&self, token_id: &Id<PasswordResetToken>) -> AppResult<()>;
+            async fn delete(&self, user_id: &Id<User>) -> AppResult<()>;
+        }
+    }
+
+    mock! {
+        pub PasswordResetTokenReaderMock {}
+
+        #[async_trait]
+        impl PasswordResetTokenReader for PasswordResetTokenReaderMock {
+            async fn find_by_token(&self, token: &str) -> AppResult<Option<PasswordResetToken>>;
+        }
+    }
+
+    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
+
+    struct MockUserReader {
+        find_by_email_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
+        find_by_id_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
+    }
+
+    impl MockUserReader {
+        fn new() -> Self {
+            Self {
+                find_by_email_fn: None,
+                find_by_id_fn: None,
+            }
+        }
+
+        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
+            self.find_by_email_fn = Some(Box::new(move |email| f(&email)));
+        }
+
+        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
+            self.find_by_id_fn = Some(Box::new(move |id| {
+                let user_id: Id<User> = id.try_into().expect("valid uuid");
+                f(&user_id)
+            }));
+        }
+    }
+
+    #[async_trait]
+    impl UserReader for MockUserReader {
+        async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
+            (self.find_by_email_fn.as_ref().expect("find_by_email must be mocked"))(email.to_string())
+        }
+
+        async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
+            Ok(false)
+        }
+
+        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
+            match &self.find_by_id_fn {
+                Some(f) => f(user_id.value.to_string()),
+                None => Ok(None),
+            }
+        }
+
+        async fn is_username_or_email_unique(
+            &self,
+            _user_id: &Id<User>,
+            _username: Option<&str>,
+            _email: Option<&str>,
+        ) -> AppResult<bool> {
+            Ok(false)
+        }
+    }
+
     fn test_config() -> Arc<AppConfig> {
         Arc::new(AppConfig {
             db: DatabaseConfig {
@@ -494,6 +644,10 @@ mod tests {
                 password: "pass".to_string(),
                 from: "noreply@example.com".to_string(),
             },
+            password_reset: PasswordResetConfig {
+                ttl: 3_600,
+                reset_url: "http://localhost/reset-password".to_string(),
+            },
         })
     }
 
@@ -505,6 +659,10 @@ mod tests {
 
     fn unconfirmed_user() -> User {
         User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string())
+    }
+
+    fn valid_reset_token(user_id: Id<User>) -> PasswordResetToken {
+        PasswordResetToken::new(user_id, "valid-token".to_string(), 3600)
     }
 
     #[tokio::test]
@@ -643,5 +801,149 @@ mod tests {
             .into_response();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_forgot_password_handler_returns_ok() {
+        let mut db_session = MockDBSessionMock::new();
+        let mut token_writer = MockPasswordResetTokenWriterMock::new();
+        let mut user_reader = MockUserReader::new();
+        let mut email_sender = MockEmailSenderMock::new();
+
+        user_reader.expect_find_by_email(|_| Ok(Some(confirmed_user())));
+        token_writer.expect_delete().returning(|_| Ok(()));
+        token_writer.expect_insert().returning(|t| Ok(t.id));
+        email_sender.expect_send().times(0..=1).returning(|_, _, _| Ok(()));
+        db_session.expect_commit().returning(|| Ok(()));
+
+        let interactor = RequestPasswordResetInteractor::new(
+            Arc::new(db_session),
+            Arc::new(token_writer),
+            Arc::new(user_reader),
+            Arc::new(email_sender),
+        );
+
+        let payload: ForgotPasswordResetRequest = serde_json::from_value(json!({
+            "email": "ex@example.com"
+        }))
+        .expect("valid forgot password payload");
+
+        let response = forgot_password(interactor, State(test_config()), Json(payload))
+            .await
+            .expect("forgot_password should pass")
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_forgot_password_handler_user_not_found_still_returns_ok() {
+        let db_session = MockDBSessionMock::new();
+        let token_writer = MockPasswordResetTokenWriterMock::new();
+        let mut user_reader = MockUserReader::new();
+        let email_sender = MockEmailSenderMock::new();
+
+        user_reader.expect_find_by_email(|_| Ok(None));
+
+        let interactor = RequestPasswordResetInteractor::new(
+            Arc::new(db_session),
+            Arc::new(token_writer),
+            Arc::new(user_reader),
+            Arc::new(email_sender),
+        );
+
+        let payload: ForgotPasswordResetRequest = serde_json::from_value(json!({
+            "email": "nonexistent@example.com"
+        }))
+        .expect("valid forgot password payload");
+
+        let response = forgot_password(interactor, State(test_config()), Json(payload))
+            .await
+            .expect("forgot_password should pass even for unknown email")
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_reset_password_handler_returns_ok() {
+        let mut db_session = MockDBSessionMock::new();
+        let mut token_reader = MockPasswordResetTokenReaderMock::new();
+        let mut token_writer = MockPasswordResetTokenWriterMock::new();
+        let mut user_reader = MockUserReader::new();
+        let mut user_writer = MockUserWriterMock::new();
+        let mut hasher = MockHasherMock::new();
+
+        let user = confirmed_user();
+        let user_id = user.id.clone();
+
+        token_reader
+            .expect_find_by_token()
+            .returning(move |_| Ok(Some(valid_reset_token(user_id.clone()))));
+        user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
+        hasher
+            .expect_hash_password()
+            .returning(|_| Ok("new_hashed_password".to_string()));
+        token_writer.expect_mark_as_used().returning(|_| Ok(()));
+        user_writer.expect_update().returning(|u| Ok(u.id));
+        db_session.expect_commit().returning(|| Ok(()));
+
+        let interactor = ResetPasswordInteractor::new(
+            Arc::new(db_session),
+            Arc::new(token_reader),
+            Arc::new(token_writer),
+            Arc::new(user_reader),
+            Arc::new(user_writer),
+            Arc::new(hasher),
+        );
+
+        let payload: ResetPasswordRequest = serde_json::from_value(json!({
+            "token": "valid-token",
+            "password": "NewPassword123!"
+        }))
+        .expect("valid reset password payload");
+
+        let response = reset_password(interactor, ValidJson(payload))
+            .await
+            .expect("reset_password should pass")
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_reset_password_handler_invalid_token_returns_400() {
+        let db_session = MockDBSessionMock::new();
+        let mut token_reader = MockPasswordResetTokenReaderMock::new();
+        let token_writer = MockPasswordResetTokenWriterMock::new();
+        let user_reader = MockUserReader::new();
+        let user_writer = MockUserWriterMock::new();
+        let hasher = MockHasherMock::new();
+
+        token_reader.expect_find_by_token().returning(|_| Ok(None));
+
+        let interactor = ResetPasswordInteractor::new(
+            Arc::new(db_session),
+            Arc::new(token_reader),
+            Arc::new(token_writer),
+            Arc::new(user_reader),
+            Arc::new(user_writer),
+            Arc::new(hasher),
+        );
+
+        let payload: ResetPasswordRequest = serde_json::from_value(json!({
+            "token": "invalid-token",
+            "password": "NewPassword123!"
+        }))
+        .expect("valid reset password payload");
+
+        let result = reset_password(interactor, ValidJson(payload)).await;
+
+        let response = match result {
+            Err(err) => err.into_response(),
+            Ok(_) => panic!("expected error response for invalid token"),
+        };
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
