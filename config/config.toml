@@ -1,0 +1,39 @@
+[application]
+allow_origins = ["*"]
+address = "0.0.0.0:3001"
+
+[db]
+url = "<YOUR_URL>"
+max_connections = 100
+
+[logger]
+log_path = "./logs"
+
+[session]
+default_max_lifetime = 86400
+default_idle_timeout = 1800
+remembered_max_lifetime = 2592000
+remembered_idle_timeout = 604800
+rotation_interval = 900
+cookie_name = "session_id"
+cookie_secure = true
+cookie_http_only = true
+
+[email_confirmation]
+ttl = 86400
+confirmation_url = "http://127.0.0.1:5173/confirm-email"
+
+[email]
+provider = "local"
+local_output_dir = "./tmp/emails"
+
+[smtp]
+host = "smtp.gmail.com"
+port = 587
+username = ""
+password = ""
+from = "noreply@example.com"
+
+[password_reset]
+ttl = 3600
+reset_url = "http://127.0.0.1:5173/reset-password/confirm"

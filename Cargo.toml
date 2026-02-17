@@ -1,0 +1,52 @@
+[package]
+name = "devlogix_backend"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = 0
+incremental = false
+overflow-checks = false
+
+[profile.dev]
+opt-level = "s"
+codegen-units = 16
+strip = true
+incremental = false
+
+[profile.test]
+opt-level = 0
+debug = 0
+incremental = true
+
+[dependencies]
+anyhow = "1.0.100"
+axum = "0.8.8"
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.49.0", features = ["full"] }
+toml = { version = "0.9.11", features = ["serde"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json", "chrono"] }
+tower-http = { version = "0.6.6", features = ["trace", "cors"] }
+tracing-appender = "0.2.4"
+uuid = { version = "1.20.0", features = ["v7"] }
+sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "macros", "uuid", "chrono"] }
+async-trait = "0.1.89"
+thiserror = "2.0.18"
+futures = "0.3.31"
+chrono = { version = "0.4.43", features = ["serde"] }
+argon2 = "0.5.3"
+serde_json = "1.0.149"
+serde-email = "3.2.0"
+validator = { version = "0.20.0", features = ["derive"] }
+lettre = { version = "0.11.19", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "tokio1"] }
+utoipa = { version = "5.4.0", features = ["chrono", "uuid"] }
+
+[dev-dependencies]
+mockall = "0.14.0"
+rstest = "0.26.1"

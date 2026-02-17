@@ -1,0 +1,71 @@
+use axum::extract::rejection::JsonRejection;
+use axum::http::header::InvalidHeaderValue;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] sqlx::Error),
+
+    #[error("Invalid Id: {0}")]
+    InvalidId(String),
+
+    #[error("Session has already been committed")]
+    SessionAlreadyCommitted,
+
+    #[error("Session has already been rolled back")]
+    SessionAlreadyRolledBack,
+
+    #[error("Failed to hash password")]
+    PasswordHashError,
+
+    #[error("Invalid Credentials")]
+    InvalidCredentials,
+
+    #[error("Invalid header value: {0}")]
+    InvalidHeader(#[from] InvalidHeaderValue),
+
+    #[error(transparent)]
+    ValidationError(#[from] validator::ValidationErrors),
+
+    #[error("Invalid json")]
+    AxumJsonRejection(#[from] JsonRejection),
+
+    #[error("User already exists")]
+    UserAlreadyExists,
+
+    #[error("Passwords does not match")]
+    InvalidPassword,
+
+    #[error("The old password field is empty")]
+    OldPasswordEmpty,
+
+    #[error("The old password is incorrect")]
+    InvalidOldPassword,
+
+    #[error("Email is not confirmed")]
+    EmailNotConfirmed,
+
+    #[error("Invalid or expired confirmation token")]
+    InvalidConfirmationToken,
+
+    #[error("Email is already confirmed")]
+    EmailAlreadyConfirmed,
+
+    #[error("Confirmation token has expired")]
+    ConfirmationTokenExpired,
+
+    #[error("Email send error: {0}")]
+    EmailSendError(String),
+
+    #[error("Invalid or expired password reset token")]
+    InvalidResetToken,
+
+    #[error("Password reset token has already has been used")]
+    ResetTokenAlreadyUsed,
+
+    #[error("Password reset token has expired")]
+    ResetTokenExpired,
+}
+
+pub type AppResult<T> = Result<T, AppError>;
