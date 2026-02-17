@@ -51,12 +51,19 @@ pub struct SMTPConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordResetConfig {
+    pub ttl: i64,
+    pub reset_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
     pub application: ApplicationConfig,
     pub session: SessionConfig,
     pub email_confirmation: EmailConfirmationConfig,
+    pub password_reset: PasswordResetConfig,
     pub email: EmailConfig,
     pub smtp: SMTPConfig,
 }
