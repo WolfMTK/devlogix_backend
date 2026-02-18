@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::postgres::PgRow;
 use sqlx::Row;
+use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;

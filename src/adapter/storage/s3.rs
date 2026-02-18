@@ -1,23 +1,18 @@
 use async_trait::async_trait;
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
-use aws_sdk_s3::{
-    config::Builder,
-    error::SdkError,
-    operation::{create_bucket::CreateBucketError, get_object::GetObjectError},
-    primitives::ByteStream,
-    Client,
-};
+use aws_sdk_s3::Client;
+use aws_sdk_s3::config::Builder;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::operation::create_bucket::CreateBucketError;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::primitives::ByteStream;
 use bytes::Bytes;
 use tracing::{info, warn};
 
-use crate::{
-    application::{
-        app_error::{AppError, AppResult},
-        interface::s3::{DownloadedFile, StorageClient},
-    },
-    infra::config::S3Config,
-};
+use crate::application::app_error::{AppError, AppResult};
+use crate::application::interface::s3::{DownloadedFile, StorageClient};
+use crate::infra::config::S3Config;
 
 pub struct S3StorageClient {
     client: Client,
