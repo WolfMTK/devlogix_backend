@@ -60,6 +60,8 @@ pub struct PasswordResetConfig {
 pub struct S3Config {
     pub access_key: String,
     pub secret_key: String,
+    pub endpoint: String,
+    pub region: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
