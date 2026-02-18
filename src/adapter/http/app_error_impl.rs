@@ -29,6 +29,9 @@ impl IntoResponse for AppError {
             AppError::ResetTokenAlreadyUsed => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ResetTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
 
+            // NOT FOUND
+            AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
+
             // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
 

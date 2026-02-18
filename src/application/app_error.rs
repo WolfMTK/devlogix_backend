@@ -66,6 +66,12 @@ pub enum AppError {
 
     #[error("Password reset token has expired")]
     ResetTokenExpired,
+
+    #[error("Storage error: {0}")]
+    StorageError(String),
+
+    #[error("File not found")]
+    StorageNotFound,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
