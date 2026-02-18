@@ -57,6 +57,12 @@ pub struct PasswordResetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct S3Config {
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
@@ -66,6 +72,7 @@ pub struct AppConfig {
     pub password_reset: PasswordResetConfig,
     pub email: EmailConfig,
     pub smtp: SMTPConfig,
+    pub s3: S3Config,
 }
 
 impl AppConfig {
