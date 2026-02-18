@@ -50,6 +50,7 @@ bytes = "1.11.0"
 aws-sdk-s3 = "1.124.0"
 aws-config = { version = "1.8.14", features = ["behavior-version-latest"] }
 aws-credential-types = "1.2.13"
+slug = "0.1.6"
 
 [dev-dependencies]
 mockall = "0.14.0"
