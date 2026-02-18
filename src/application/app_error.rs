@@ -72,6 +72,15 @@ pub enum AppError {
 
     #[error("File not found")]
     StorageNotFound,
+
+    #[error("Invalid visibility value: '{0}'. Expected 'public' or 'private'.")]
+    InvalidVisibility(String),
+
+    #[error("Workspace creation error")]
+    CreatedWorkspaceError,
+
+    #[error("Unsupported image format")]
+    UnsupportedImageFormat,
 }
 
 pub type AppResult<T> = Result<T, AppError>;

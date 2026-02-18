@@ -28,6 +28,9 @@ impl IntoResponse for AppError {
             AppError::InvalidResetToken => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ResetTokenAlreadyUsed => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ResetTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidVisibility(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::CreatedWorkspaceError => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::UnsupportedImageFormat => (StatusCode::BAD_REQUEST, Some(self.to_string())),
 
             // NOT FOUND
             AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
