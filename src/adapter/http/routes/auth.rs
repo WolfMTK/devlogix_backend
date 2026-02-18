@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
+use axum::Json;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::auth::{build_logout_cookie, build_session_cookie};
@@ -423,11 +423,11 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use axum::Json;
     use axum::extract::{Query, State};
-    use axum::http::StatusCode;
     use axum::http::header::SET_COOKIE;
+    use axum::http::StatusCode;
     use axum::response::IntoResponse;
+    use axum::Json;
     use chrono::Utc;
     use mockall::mock;
     use serde_json::json;
@@ -456,10 +456,7 @@ mod tests {
     use crate::domain::entities::password_reset::PasswordResetToken;
     use crate::domain::entities::session::Session;
     use crate::domain::entities::user::User;
-    use crate::infra::config::{
-        AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig,
-        PasswordResetConfig, SMTPConfig, SessionConfig,
-    };
+    use crate::infra::config::{AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig, PasswordResetConfig, S3Config, SMTPConfig, SessionConfig};
 
     mock! {
         pub DBSessionMock {}
@@ -648,6 +645,12 @@ mod tests {
                 ttl: 3_600,
                 reset_url: "http://localhost/reset-password".to_string(),
             },
+            s3: S3Config {
+                access_key: "user".to_string(),
+                secret_key: "password".to_string(),
+                endpoint: "http://127.0.0.1:9000".to_string(),
+                region: "us-west-2".to_string(),
+            }
         })
     }
 
