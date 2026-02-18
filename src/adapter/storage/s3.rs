@@ -38,6 +38,12 @@ impl S3StorageClient {
 #[async_trait]
 impl StorageClient for S3StorageClient {
     async fn ensure_bucket(&self, bucket: &str) -> AppResult<()> {
+        let exists = self.client.head_bucket().bucket(bucket).send().await;
+
+        if exists.is_ok() {
+            return Ok(());
+        }
+
         let result = self.client.create_bucket().bucket(bucket).send().await;
 
         match result {
@@ -52,7 +58,7 @@ impl StorageClient for S3StorageClient {
                     Err(AppError::StorageError(other.to_string()))
                 }
             },
-            Err(e) => Err(AppError::StorageError((e.to_string()))),
+            Err(e) => Err(AppError::StorageError(e.to_string())),
         }
     }
 
