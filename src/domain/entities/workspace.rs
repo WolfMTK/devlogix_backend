@@ -4,39 +4,60 @@ use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 
 #[derive(Debug, Clone)]
+pub enum WorkspaceVisibility {
+    Private,
+    Public,
+}
+
+#[derive(Debug, Clone)]
 pub struct Workspace {
-    id: Id<Workspace>,
-    owner_user_id: Id<User>,
-    name: String,
-    slug: String,
-    description: String,
-    logo: String,
-    primary_color: String,
-    visibility: String,
-    updated_at: DateTime<Utc>,
-    created_at: DateTime<Utc>,
+    pub id: Id<Workspace>,
+    pub owner_user_id: Id<User>,
+    pub name: String,
+    pub description: Option<String>,
+    pub slug: String,
+    pub logo: Option<String>,
+    pub primary_color: String,
+    pub visibility: WorkspaceVisibility,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub enum WorkspaceMemberRole {
+    Admin,
+    Member,
+}
+
+#[derive(Debug, Clone)]
+pub enum WorkspaceMemberStatus {
+    Awaiting,
+    Active,
+    Inactive,
 }
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceMember {
-    id: Id<WorkspaceMember>,
-    workspace_id: Id<Workspace>,
-    user_id: Id<User>,
-    role: String,
-    joined_at: DateTime<Utc>,
-    invited_by: Id<User>,
-    status: String,
+    pub id: Id<WorkspaceMember>,
+    pub workspace_id: Id<Workspace>,
+    pub user_id: Id<User>,
+    pub role: WorkspaceMemberRole,
+    pub joined_at: Option<DateTime<Utc>>,
+    pub invited_by: Id<User>,
+    pub status: WorkspaceMemberStatus,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceInvite {
-    id: Id<WorkspaceInvite>,
-    workspace_id: Id<Workspace>,
-    email: String,
-    role: String,
-    invite_token: String,
-    invited_by: Id<User>,
-    expires_at: DateTime<Utc>,
-    accepted_at: DateTime<Utc>,
-    revoked_at: DateTime<Utc>,
+    pub id: Id<WorkspaceInvite>,
+    pub workspace_id: Id<Workspace>,
+    pub email: String,
+    pub status: String,
+    pub invite_token: String,
+    pub invited_by: Id<User>,
+    pub expires_at: DateTime<Utc>,
+    pub accepted_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
 }
