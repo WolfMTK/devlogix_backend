@@ -81,6 +81,24 @@ pub enum AppError {
 
     #[error("Unsupported image format")]
     UnsupportedImageFormat,
+
+    #[error("Workspace not found")]
+    WorkspaceNotFound,
+
+    #[error("Access denied")]
+    AccessDenied,
+
+    #[error("Invite not found")]
+    InviteNotFound,
+
+    #[error("Invite already sent to this email")]
+    InviteAlreadyExists,
+
+    #[error("Invite has expired")]
+    InviteExpired,
+
+    #[error("Invite is not pending")]
+    InviteInvalid,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
