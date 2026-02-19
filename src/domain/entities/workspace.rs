@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use slug::slugify;
 
 use crate::application::app_error::AppError;
@@ -95,13 +95,51 @@ pub struct WorkspaceInvite {
     pub id: Id<WorkspaceInvite>,
     pub workspace_id: Id<Workspace>,
     pub email: String,
-    pub status: String,
     pub invite_token: String,
     pub invited_by: Id<User>,
     pub expires_at: DateTime<Utc>,
     pub accepted_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+}
+
+impl WorkspaceInvite {
+    pub fn new(
+        workspace_id: Id<Workspace>,
+        email: String,
+        invite_token: String,
+        invited_by: Id<User>,
+        ttl: i64,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Id::generate(),
+            workspace_id,
+            email,
+            invite_token,
+            invited_by,
+            expires_at: now + Duration::seconds(ttl),
+            accepted_at: None,
+            revoked_at: None,
+            created_at: now,
+        }
+    }
+
+    pub fn is_expired(&self) -> bool {
+        Utc::now() > self.expires_at
+    }
+
+    pub fn is_accepted(&self) -> bool {
+        self.accepted_at.is_some()
+    }
+
+    pub fn is_revoked(&self) -> bool {
+        self.revoked_at.is_some()
+    }
+
+    pub fn is_pending(&self) -> bool {
+        !self.is_accepted() && !self.is_revoked() && !self.is_expired()
+    }
 }
 
 #[cfg(test)]
