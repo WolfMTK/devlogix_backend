@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(80) NOT NULL,
     description TEXT,
-    slug VARCHAR(40) UNIQUE NOT NULL,
+    slug VARCHAR(40) NOT NULL,
     logo TEXT,
     primary_color VARCHAR(6) NOT NULL,
     visibility workspace_visibility NOT NULL DEFAULT 'private',
