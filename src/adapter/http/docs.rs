@@ -1,17 +1,17 @@
-use axum::response::Html;
 use axum::Json;
-use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+use axum::response::Html;
 use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::routes::{auth, user, workspace};
+use crate::adapter::http::schema::ValidPassword;
 use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
 use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
 use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
 use crate::adapter::http::schema::workspace::CreateWorkspaceRequest;
-use crate::adapter::http::schema::ValidPassword;
 
 struct SecurityAddon;
 
