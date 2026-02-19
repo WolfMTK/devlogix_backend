@@ -154,6 +154,8 @@ mod tests {
         #[async_trait]
         impl WorkspaceWriter for WorkspaceWriterMock {
             async fn insert(&self, workspace: Workspace) -> AppResult<Id<Workspace>>;
+            async fn update(&self, workspace: Workspace) -> AppResult<()>;
+            async fn delete(&self, workspace_id: &Id<Workspace>) -> AppResult<()>;
         }
     }
 
@@ -165,6 +167,7 @@ mod tests {
             async fn upload(&self, bucket: &str, key: &str, data: Bytes, content_type: &str) -> AppResult<()>;
             async fn download(&self, bucket: &str, key: &str) -> AppResult<DownloadedFile>;
             async fn delete(&self, bucket: &str, key: &str) -> AppResult<()>;
+            async fn delete_bucket(&self, bucket: &str) -> AppResult<()>;
             fn detect_image(&self, data: &[u8]) -> Option<DetectedImage>;
         }
     }
