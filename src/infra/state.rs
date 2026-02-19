@@ -9,6 +9,7 @@ use crate::adapter::db::gateway::email_confirmation::EmailConfirmationGateway;
 use crate::adapter::db::gateway::password_reset::PasswordResetTokenGateway;
 use crate::adapter::db::gateway::session::SessionGateway;
 use crate::adapter::db::gateway::user::UserGateway;
+use crate::adapter::db::gateway::workspace::WorkspaceGateway;
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
@@ -16,8 +17,10 @@ use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor
 use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
 use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
+use crate::application::interactors::workspace::CreateWorkspaceInteractor;
 use crate::application::interface::crypto::CredentialsHasher;
 use crate::application::interface::email::EmailSender;
+use crate::application::interface::s3::StorageClient;
 use crate::infra::config::AppConfig;
 
 #[derive(Clone)]
@@ -26,6 +29,7 @@ pub struct AppState {
     pub hasher: Arc<dyn CredentialsHasher>,
     pub config: Arc<AppConfig>,
     pub email_sender: Arc<dyn EmailSender>,
+    pub storage: Arc<dyn StorageClient>,
 }
 
 impl FromRef<AppState> for Arc<AppConfig> {
@@ -324,5 +328,33 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         ResetPasswordInteractor::from_app_state(&app_state).await
+    }
+}
+
+// CreateWorkspaceInteractor
+#[async_trait]
+impl FromAppState for CreateWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+
+        Ok(CreateWorkspaceInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            state.storage.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for CreateWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        CreateWorkspaceInteractor::from_app_state(&app_state).await
     }
 }
