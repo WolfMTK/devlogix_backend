@@ -3,6 +3,7 @@ pub mod email_confirmation;
 pub mod id;
 pub mod password_reset;
 pub mod user;
+pub mod workspace;
 
 use serde::Deserialize;
 use utoipa::ToSchema;
