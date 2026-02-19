@@ -1,16 +1,17 @@
-use axum::Json;
 use axum::response::Html;
-use utoipa::openapi::OpenApi as OpenApiDoc;
+use axum::Json;
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::{Modify, OpenApi};
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
-use crate::adapter::http::routes::{auth, user};
-use crate::adapter::http::schema::ValidPassword;
+use crate::adapter::http::routes::{auth, user, workspace};
 use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
 use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
 use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
+use crate::adapter::http::schema::workspace::CreateWorkspaceRequest;
+use crate::adapter::http::schema::ValidPassword;
 
 struct SecurityAddon;
 
@@ -37,7 +38,8 @@ impl Modify for SecurityAddon {
         auth::confirm_email,
         auth::resend_confirmation,
         auth::forgot_password,
-        auth::reset_password
+        auth::reset_password,
+        workspace::create_workspace
     ),
     components(
         schemas(
@@ -51,7 +53,8 @@ impl Modify for SecurityAddon {
             UpdateUserRequest,
             ValidPassword,
             ForgotPasswordResetRequest,
-            ResetPasswordRequest
+            ResetPasswordRequest,
+            CreateWorkspaceRequest
         )
     )
 )]
