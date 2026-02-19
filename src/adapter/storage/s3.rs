@@ -127,4 +127,36 @@ impl StorageClient for S3StorageClient {
         info!("Deleted s3://{}/{}", bucket, key);
         Ok(())
     }
+
+    async fn delete_bucket(&self, bucket: &str) -> AppResult<()> {
+        let objects = self
+            .client
+            .list_objects_v2()
+            .bucket(bucket)
+            .send()
+            .await
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+        for object in objects.contents() {
+            if let Some(key) = object.key() {
+                self.client
+                    .delete_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::StorageError(e.to_string()))?;
+            }
+        }
+
+        self.client
+            .delete_bucket()
+            .bucket(bucket)
+            .send()
+            .await
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+        info!("Deleted bucket: '{}'", bucket);
+        Ok(())
+    }
 }
