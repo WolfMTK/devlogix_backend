@@ -9,6 +9,7 @@ use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{Workspace, WorkspaceVisibility};
 
+#[derive(Clone)]
 pub struct CreateWorkspaceInteractor {
     db_session: Arc<dyn DBSession>,
     workspace_writer: Arc<dyn WorkspaceWriter>,
