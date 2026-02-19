@@ -1,7 +1,7 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
 use axum::routing::{get, patch, post};
-use axum::{Router, middleware};
+use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -13,6 +13,7 @@ use crate::adapter::http::routes::auth::{
     confirm_email, forgot_password, login, logout, resend_confirmation, reset_password,
 };
 use crate::adapter::http::routes::user::{get_me, register, update_user};
+use crate::adapter::http::routes::workspace::create_workspace;
 use crate::infra::config::AppConfig;
 use crate::infra::state::AppState;
 
@@ -82,10 +83,20 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
     Router::new().merge(public_routes).merge(protected_routes)
 }
 
+pub fn workspace_router(state: AppState) -> Router<AppState> {
+    let protected_routes = Router::new()
+        .route("/", post(create_workspace))
+        .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    Router::new().merge(protected_routes)
+}
+
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .nest("/users", user_router(state.clone()))
         .nest("/auth", auth_router(state.clone()))
+        .nest("/workspaces", workspace_router(state.clone()))
         .route("/openapi.json", get(openapi_json))
         .route("/docs", get(docs_ui))
 }
