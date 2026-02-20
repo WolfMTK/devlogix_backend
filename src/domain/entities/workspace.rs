@@ -90,6 +90,27 @@ pub struct WorkspaceMember {
     pub created_at: DateTime<Utc>,
 }
 
+impl WorkspaceMember {
+    pub fn new(
+        workspace_id: Id<Workspace>,
+        user_id: Id<User>,
+        invited_by: Id<User>,
+        role: WorkspaceMemberRole,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Id::generate(),
+            workspace_id,
+            user_id,
+            role,
+            joined_at: None,
+            invited_by,
+            status: WorkspaceMemberStatus::Awaiting,
+            created_at: now,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceInvite {
     pub id: Id<WorkspaceInvite>,
