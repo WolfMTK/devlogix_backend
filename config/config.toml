@@ -43,3 +43,7 @@ access_key = "admin"
 secret_key = "password"
 endpoint = "http://127.0.0.1:9000"
 region = "us-east-1"
+
+[workspace_invite]
+ttl = 86400
+reset_url = "http://127.0.0.1:5173/workspaces/invites/accept"

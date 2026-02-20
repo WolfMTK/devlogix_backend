@@ -65,6 +65,12 @@ pub struct S3Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceInviteConfig {
+    pub ttl: i64,
+    pub incite_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub db: DatabaseConfig,
     pub logger: LoggerConfig,
@@ -75,6 +81,7 @@ pub struct AppConfig {
     pub email: EmailConfig,
     pub smtp: SMTPConfig,
     pub s3: S3Config,
+    pub workspace_invite: WorkspaceInviteConfig,
 }
 
 impl AppConfig {
