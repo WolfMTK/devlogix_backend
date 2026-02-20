@@ -92,7 +92,7 @@ pub struct AcceptWorkspaceInviteDTO {
 }
 
 #[derive(Debug, Clone)]
-pub struct GetWorkpsaceDTO {
+pub struct GetWorkspaceDTO {
     pub user_id: String,
     pub workspace_id: String,
     pub slug: String,

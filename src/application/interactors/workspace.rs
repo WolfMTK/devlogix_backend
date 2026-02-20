@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use chrono::IsoWeek;
 use slug::slugify;
 use tracing::{error, info};
 use uuid::Uuid;
-use validator::ValidateContains;
 
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::dto::workspace::{
-    AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkpsaceDTO,
+    AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceDTO,
     GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO, WorkspaceDTO,
     WorkspaceListDTO, WorkspaceLogoDTO,
 };
@@ -487,7 +485,7 @@ impl GetWorkspaceInteractor {
         Self { workspace_reader }
     }
 
-    pub async fn execute(&self, dto: GetWorkpsaceDTO) -> AppResult<WorkspaceDTO> {
+    pub async fn execute(&self, dto: GetWorkspaceDTO) -> AppResult<WorkspaceDTO> {
         let user_id: Id<User> = dto.user_id.try_into()?;
         let workspace_id: Id<Workspace> = dto.workspace_id.try_into()?;
 
