@@ -458,7 +458,7 @@ mod tests {
     use crate::domain::entities::user::User;
     use crate::infra::config::{
         AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig,
-        PasswordResetConfig, S3Config, SMTPConfig, SessionConfig,
+        PasswordResetConfig, S3Config, SMTPConfig, SessionConfig, WorkspaceInviteConfig,
     };
 
     mock! {
@@ -653,6 +653,10 @@ mod tests {
                 secret_key: "password".to_string(),
                 endpoint: "http://127.0.0.1:9000".to_string(),
                 region: "us-west-2".to_string(),
+            },
+            workspace_invite: WorkspaceInviteConfig {
+                ttl: 86_400,
+                incite_url: "http://localhost/workspaces/invites/accept".to_string(),
             },
         })
     }
