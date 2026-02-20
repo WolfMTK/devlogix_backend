@@ -39,7 +39,7 @@ impl WorkspaceGateway {
             description: row.try_get("description")?,
             slug: row.try_get("slug")?,
             logo: row.try_get("logo")?,
-            primary_color: row.try_get("primary_logo")?,
+            primary_color: row.try_get("primary_color")?,
             visibility,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
@@ -209,7 +209,7 @@ impl WorkspaceReader for WorkspaceGateway {
                             FROM
                                 workspaces AS w
                             WHERE
-                                w.owner_user_id= $1
+                                w.owner_user_id = $1
                                 OR EXISTS (
                                     SELECT 1
                                     FROM
@@ -290,7 +290,7 @@ impl WorkspaceReader for WorkspaceGateway {
                                         FROM
                                             workspace_members AS wm
                                         WHERE wm.workspace_id = w.id
-                                            AND wm.user_id = $1
+                                            AND wm.user_id = $2
                                             AND wm.status = 'active'
                                     )
                                 )
@@ -365,7 +365,7 @@ impl WorkspaceInviteGateway {
             email: row.try_get("email")?,
             invite_token: row.try_get("invite_token")?,
             invited_by: Id::new(row.try_get("invited_by")?),
-            expires_at: row.try_get("expites_at")?,
+            expires_at: row.try_get("expires_at")?,
             accepted_at: row.try_get("accepted_at")?,
             revoked_at: row.try_get("revoked_at")?,
             created_at: row.try_get("created_at")?,
@@ -382,7 +382,7 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                 let row = sqlx::query(
                     r#"
                         INSERT INTO workspace_invites
-                            (id, workspace_id, invite_token, invited_by, expires_at, accepted_at, revoked_at, created_at)
+                            (id, workspace_id, email, invite_token, invited_by, expires_at, accepted_at, revoked_at, created_at)
                         VALUES
                             ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                         RETURNING id
