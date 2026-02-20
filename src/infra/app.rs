@@ -1,6 +1,6 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Router, middleware};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -13,7 +13,10 @@ use crate::adapter::http::routes::auth::{
     confirm_email, forgot_password, login, logout, resend_confirmation, reset_password,
 };
 use crate::adapter::http::routes::user::{get_me, register, update_user};
-use crate::adapter::http::routes::workspace::create_workspace;
+use crate::adapter::http::routes::workspace::{
+    accept_workpsace_invite, check_workspace_owner, create_workspace, delete_workspace, get_workspace,
+    get_workspace_list, get_workspace_logo, invite_workspace_member, update_workspace,
+};
 use crate::infra::config::AppConfig;
 use crate::infra::state::AppState;
 
@@ -86,6 +89,14 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
 pub fn workspace_router(state: AppState) -> Router<AppState> {
     let protected_routes = Router::new()
         .route("/", post(create_workspace))
+        .route("/", get(get_workspace_list))
+        .route("/{workspace_id}/{slug}", get(get_workspace))
+        .route("/{workspace_id}", patch(update_workspace))
+        .route("/{workspace_id}", delete(delete_workspace))
+        .route("/{workspace_id}/check-owner", get(check_workspace_owner))
+        .route("/{workspace_id}/invites", post(invite_workspace_member))
+        .route("/invites/accept", get(accept_workpsace_invite))
+        .route("/{workspace_id}/storage/{file_name}", get(get_workspace_logo))
         .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
