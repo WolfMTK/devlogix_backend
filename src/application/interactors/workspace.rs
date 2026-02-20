@@ -8,19 +8,21 @@ use validator::ValidateContains;
 
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::dto::workspace::{
-    CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceListDTO, GetWorkspaceLogoDTO,
-    InviteWorkspaceMemberDTO, UpdateWorkspaceDTO, WorkspaceDTO, WorkspaceListDTO, WorkspaceLogoDTO,
+    AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkpsaceDTO,
+    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO, WorkspaceDTO,
+    WorkspaceListDTO, WorkspaceLogoDTO,
 };
 use crate::application::interface::db::DBSession;
 use crate::application::interface::email::EmailSender;
 use crate::application::interface::gateway::workspace::{
-    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceReader, WorkspaceWriter,
+    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspaceReader,
+    WorkspaceWriter,
 };
 use crate::application::interface::s3::StorageClient;
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{
-    Workspace, WorkspaceInvite, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceVisibility,
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceVisibility,
 };
 
 const MAX_PER_PAGE: i64 = 100;
@@ -410,6 +412,115 @@ impl InviteWorkspaceMemberInteractor {
         });
 
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct AcceptWorkpspaceInviteIneractor {
+    db_session: Arc<dyn DBSession>,
+    workspace_invite_reader: Arc<dyn WorkspaceInviteReader>,
+    workspace_invite_writer: Arc<dyn WorkspaceInviteWriter>,
+    workspace_member_reader: Arc<dyn WorkspaceMemberReader>,
+    workspace_member_writer: Arc<dyn WorkspaceMemberWriter>,
+}
+
+impl AcceptWorkpspaceInviteIneractor {
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        workspace_invite_reader: Arc<dyn WorkspaceInviteReader>,
+        workspace_invite_writer: Arc<dyn WorkspaceInviteWriter>,
+        workspace_member_reader: Arc<dyn WorkspaceMemberReader>,
+        workspace_member_writer: Arc<dyn WorkspaceMemberWriter>,
+    ) -> Self {
+        Self {
+            db_session,
+            workspace_invite_reader,
+            workspace_invite_writer,
+            workspace_member_reader,
+            workspace_member_writer,
+        }
+    }
+
+    pub async fn execute(&self, dto: AcceptWorkspaceInviteDTO) -> AppResult<()> {
+        let user_id: Id<User> = dto.user_id.try_into()?;
+
+        let invite = self
+            .workspace_invite_reader
+            .find_by_token(&dto.token)
+            .await?
+            .ok_or(AppError::InviteNotFound)?;
+
+        if invite.is_expired() {
+            return Err(AppError::InviteExpired);
+        }
+
+        if !invite.is_pending() {
+            return Err(AppError::InviteInvalid);
+        }
+
+        let existing_member = self.workspace_member_reader.get(&invite.workspace_id, &user_id).await?;
+
+        if existing_member.is_none() {
+            let member = WorkspaceMember::new(
+                invite.workspace_id.clone(),
+                user_id,
+                invite.invited_by.clone(),
+                WorkspaceMemberRole::Member,
+            );
+            self.workspace_member_writer.insert(member).await?;
+        }
+
+        self.workspace_invite_writer.accept(&invite.id).await?;
+        self.db_session.commit().await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct GetWorkspaceInteractor {
+    workspace_reader: Arc<dyn WorkspaceReader>,
+}
+
+impl GetWorkspaceInteractor {
+    pub fn new(workspace_reader: Arc<dyn WorkspaceReader>) -> Self {
+        Self { workspace_reader }
+    }
+
+    pub async fn execute(&self, dto: GetWorkpsaceDTO) -> AppResult<WorkspaceDTO> {
+        let user_id: Id<User> = dto.user_id.try_into()?;
+        let workspace_id: Id<Workspace> = dto.workspace_id.try_into()?;
+
+        let workspace = self
+            .workspace_reader
+            .find_by_id_and_slug(&workspace_id, &dto.slug)
+            .await?
+            .ok_or(AppError::WorkspaceNotFound)?;
+
+        let accessible = self
+            .workspace_reader
+            .is_accessible_by_user(&workspace_id, &user_id)
+            .await?;
+
+        if !accessible {
+            return Err(AppError::AccessDenied);
+        }
+
+        Ok(WorkspaceDTO {
+            id: workspace.id.value.to_string(),
+            owner_user_id: workspace.owner_user_id.value.to_string(),
+            name: workspace.name,
+            description: workspace.description,
+            slug: workspace.slug,
+            logo: workspace.logo,
+            primary_color: workspace.primary_color,
+            visibility: match workspace.visibility {
+                WorkspaceVisibility::Private => "private".to_string(),
+                WorkspaceVisibility::Public => "public".to_string(),
+            },
+            created_at: workspace.created_at,
+            updated_at: workspace.updated_at,
+        })
     }
 }
 
