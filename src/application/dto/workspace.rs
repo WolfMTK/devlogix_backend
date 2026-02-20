@@ -84,3 +84,16 @@ pub struct InviteWorkspaceMemberDTO {
     pub ttl: i64,
     pub invite_url: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct AcceptWorkspaceInviteDTO {
+    pub user_id: String,
+    pub token: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct GetWorkpsaceDTO {
+    pub user_id: String,
+    pub workspace_id: String,
+    pub slug: String,
+}
