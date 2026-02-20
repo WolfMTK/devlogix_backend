@@ -104,9 +104,9 @@ impl WorkspaceWriter for WorkspaceGateway {
                             name = $2,
                             description = $3,
                             primary_color = $4,
-                            visibility = $5,
+                            visibility = $5::workspace_visibility,
                             logo = $6,
-                            slug = $6,
+                            slug = $7,
                             updated_at = now()
                         WHERE id = $1
                     "#,
@@ -114,6 +114,7 @@ impl WorkspaceWriter for WorkspaceGateway {
                     .bind(workspace.id.value)
                     .bind(workspace.name)
                     .bind(workspace.description)
+                    .bind(workspace.primary_color)
                     .bind(visibility)
                     .bind(workspace.logo)
                     .bind(workspace.slug)
@@ -325,7 +326,7 @@ impl WorkspaceReader for WorkspaceGateway {
                             slug,
                             logo,
                             primary_color,
-                            visibility,
+                            visibility::TEXT,
                             updated_at,
                             created_at
                         FROM workspaces
@@ -472,7 +473,7 @@ impl WorkspaceInviteReader for WorkspaceInviteGateway {
                             revoked_at,
                             created_at
                         FROM workspace_invites
-                        WHERE workspace_invites.token = $1
+                        WHERE workspace_invites.invite_token = $1
                     "#,
                     )
                     .bind(token)
@@ -540,6 +541,7 @@ impl WorkspaceMemberWriter for WorkspaceMemberGateway {
                             (id, workspace_id, user_id, role, joined_at, invited_by, status, created_at)
                         VALUES
                             ($1, $2, $3, $4::workspace_member_role, now(), $5, 'active', now())
+                        RETURNING id
                     "#,
                     )
                     .bind(workspace_member.id.value)
