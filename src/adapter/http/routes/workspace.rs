@@ -1,16 +1,35 @@
+use std::sync::Arc;
+
 use axum::Json;
-use axum::extract::Multipart;
-use axum::http::StatusCode;
+use axum::body::Body;
+use axum::extract::{Multipart, Path, Query, State};
+use axum::http::header::CONTENT_TYPE;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use bytes::Bytes;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::MessageResponse;
-use crate::adapter::http::schema::workspace::CreateWorkspaceRequest;
+use crate::adapter::http::schema::pagination::PaginationQuery;
+use crate::adapter::http::schema::workspace::{
+    AcceptInviteQuery, CreateWorkspaceRequest, GetWorkspaceResponse, InviteWorkspaceMemberRequest,
+    WorkspaceListResponse,
+};
 use crate::application::app_error::{AppError, AppResult};
-use crate::application::dto::workspace::CreateWorkspaceDTO;
-use crate::application::interactors::workspace::CreateWorkspaceInteractor;
+use crate::application::dto::workspace::{
+    AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceDTO,
+    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO,
+};
+use crate::application::interactors::workspace::{
+    AcceptWorkpspaceInviteIneractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor, GetWorkspaceLogoInteractor,
+    InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+};
+use crate::infra::config::AppConfig;
+
+const DEFAULT_PAGE: i64 = 1;
+const DEFAULT_PER_PAGE: i64 = 20;
 
 #[utoipa::path(
     post,
@@ -109,6 +128,281 @@ pub async fn create_workspace(
         StatusCode::OK,
         Json(MessageResponse {
             message: "Workspace created successfully".to_string(),
+        }),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces",
+    tag = "Workspaces",
+    params(PaginationQuery),
+    responses(
+        (
+            status = 200,
+            description = "Workspace list",
+            body = WorkspaceListResponse
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!(
+                {
+                    "error": "Invalid Credentials"
+                }
+            )
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!(
+                {
+                    "error": "Internal Server Error"
+                }
+            )
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
+pub async fn get_workspace_list(
+    auth_user: AuthUser,
+    interactor: GetWorkspaceListInteractor,
+    Query(query): Query<PaginationQuery>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetWorkspaceListDTO {
+        user_id: auth_user.user_id,
+        page: query.page.unwrap_or(DEFAULT_PAGE),
+        per_page: query.per_page.unwrap_or(DEFAULT_PER_PAGE),
+    };
+    let result = interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(WorkspaceListResponse {
+            items: result
+                .items
+                .into_iter()
+                .map(|w| GetWorkspaceResponse {
+                    id: w.id,
+                    owner_user_id: w.owner_user_id,
+                    name: w.name,
+                    description: w.description,
+                    slug: w.slug,
+                    logo: w.logo,
+                    primary_color: w.primary_color,
+                    visibility: w.visibility,
+                    created_at: w.created_at,
+                    updated_at: w.updated_at,
+                })
+                .collect(),
+            total: result.total,
+            page: result.page,
+            per_page: result.per_page,
+        }),
+    ))
+}
+
+pub async fn get_workspace_logo(
+    auth_user: AuthUser,
+    interactor: GetWorkspaceLogoInteractor,
+    Path((workspace_id, file_name)): Path<(String, String)>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetWorkspaceLogoDTO {
+        user_id: auth_user.user_id,
+        workspace_id: workspace_id,
+        file_name: file_name,
+    };
+    let logo = interactor.execute(dto).await?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_str(&logo.content_type)
+            .map_err(|_| AppError::StorageError("Invalid content type".to_string()))?,
+    );
+
+    Ok((StatusCode::OK, headers, Body::from(logo.data)))
+}
+
+pub async fn update_workspace(
+    auth_user: AuthUser,
+    interactor: UpdateWorkspaceInteractor,
+    Path(workspace_id): Path<String>,
+    mut multipart: Multipart,
+) -> AppResult<impl IntoResponse> {
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut primary_color: Option<String> = None;
+    let mut visibility: Option<String> = None;
+    let mut logo: Option<Bytes> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::StorageError(e.to_string()))?
+    {
+        match field.name() {
+            Some("name") => {
+                let text = field.text().await.map_err(|e| AppError::StorageError(e.to_string()))?;
+                if !text.is_empty() {
+                    name = Some(text);
+                }
+            }
+            Some("description") => {
+                let text = field.text().await.map_err(|e| AppError::StorageError(e.to_string()))?;
+                if !text.is_empty() {
+                    description = Some(text);
+                }
+            }
+            Some("primary_color") => {
+                let text = field.text().await.map_err(|e| AppError::StorageError(e.to_string()))?;
+                if !text.is_empty() {
+                    primary_color = Some(text);
+                }
+            }
+            Some("visibility") => {
+                let text = field.text().await.map_err(|e| AppError::StorageError(e.to_string()))?;
+                if !text.is_empty() {
+                    visibility = Some(text);
+                }
+            }
+            Some("logo") => {
+                let bytes = field.bytes().await.map_err(|e| AppError::StorageError(e.to_string()))?;
+                if !bytes.is_empty() {
+                    logo = Some(bytes);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let dto = UpdateWorkspaceDTO {
+        user_id: auth_user.user_id,
+        workspace_id,
+        name,
+        description,
+        primary_color,
+        logo,
+        visibility,
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Workspace updated successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn delete_workspace(
+    auth_user: AuthUser,
+    interactor: DeleteWorkspaceInteractor,
+    Path(workspace_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let dto = DeleteWorkspaceDTO {
+        user_id: auth_user.user_id,
+        workspace_id,
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Workspace deleted successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn check_workspace_owner(
+    auth_user: AuthUser,
+    interactor: CheckWorkspaceOwnerInteractor,
+    Path(workspace_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let dto = CheckWorkspaceOwnerDTO {
+        user_id: auth_user.user_id,
+        workspace_id,
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Access granted".to_string(),
+        }),
+    ))
+}
+
+pub async fn invite_workspace_member(
+    auth_user: AuthUser,
+    interactor: InviteWorkspaceMemberInteractor,
+    State(config): State<Arc<AppConfig>>,
+    Path(workspace_id): Path<String>,
+    Json(payload): Json<InviteWorkspaceMemberRequest>,
+) -> AppResult<impl IntoResponse> {
+    let dto = InviteWorkspaceMemberDTO {
+        user_id: auth_user.user_id,
+        workspace_id,
+        email: payload.email.to_string(),
+        ttl: config.workspace_invite.ttl,
+        invite_url: config.workspace_invite.incite_url.clone(),
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Invite sent successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn accept_workpsace_invite(
+    auth_user: AuthUser,
+    interactor: AcceptWorkpspaceInviteIneractor,
+    Query(query): Query<AcceptInviteQuery>,
+) -> AppResult<impl IntoResponse> {
+    let dto = AcceptWorkspaceInviteDTO {
+        user_id: auth_user.user_id,
+        token: query.token,
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Invite accepted successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn get_workspace(
+    auth_user: AuthUser,
+    interactor: GetWorkspaceInteractor,
+    Path((workspace_id, slug)): Path<(String, String)>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetWorkspaceDTO {
+        user_id: auth_user.user_id,
+        workspace_id,
+        slug,
+    };
+    let workspace = interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(GetWorkspaceResponse {
+            id: workspace.id,
+            owner_user_id: workspace.owner_user_id,
+            name: workspace.name,
+            description: workspace.description,
+            slug: workspace.slug,
+            logo: workspace.logo,
+            primary_color: workspace.primary_color,
+            visibility: workspace.visibility,
+            created_at: workspace.created_at,
+            updated_at: workspace.updated_at,
         }),
     ))
 }
