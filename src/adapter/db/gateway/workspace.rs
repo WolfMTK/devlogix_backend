@@ -6,10 +6,15 @@ use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::{AppError, AppResult};
-use crate::application::interface::gateway::workspace::{WorkspaceInviteWriter, WorkspaceReader, WorkspaceWriter};
+use crate::application::interface::gateway::workspace::{
+    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspaceReader,
+    WorkspaceWriter,
+};
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
-use crate::domain::entities::workspace::{Workspace, WorkspaceInvite, WorkspaceVisibility};
+use crate::domain::entities::workspace::{
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceVisibility,
+};
 
 #[derive(Clone)]
 pub struct WorkspaceGateway {
@@ -303,6 +308,44 @@ impl WorkspaceReader for WorkspaceGateway {
             })
             .await
     }
+
+    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<Workspace>> {
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                let slug = slug.to_owned();
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                        SELECT
+                            id,
+                            owner_user_id,
+                            name,
+                            description,
+                            slug,
+                            logo,
+                            primary_color,
+                            visibility,
+                            updated_at,
+                            created_at
+                        FROM workspaces
+                        WHERE workspaces.id = $1 AND slug = $2
+                    "#,
+                    )
+                    .bind(workspace_id)
+                    .bind(slug)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    match row {
+                        Some(row) => Ok(Some(Self::get_workspace(&row)?)),
+                        None => Ok(None),
+                    }
+                }
+                .boxed()
+            })
+            .await
+    }
 }
 
 #[derive(Clone)]
@@ -402,6 +445,152 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                     .await?;
 
                     Ok(())
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl WorkspaceInviteReader for WorkspaceInviteGateway {
+    async fn find_by_token(&self, token: &str) -> AppResult<Option<WorkspaceInvite>> {
+        self.session
+            .with_tx(|tx| {
+                let token = token.to_owned();
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                        SELECT
+                            id,
+                            workspace_id,
+                            email,
+                            invite_token,
+                            invited_by,
+                            expires_at,
+                            accepted_at,
+                            revoked_at,
+                            created_at
+                        FROM workspace_invites
+                        WHERE workspace_invites.token = $1
+                    "#,
+                    )
+                    .bind(token)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    match row {
+                        Some(row) => Ok(Some(Self::get_workspace_invite(&row)?)),
+                        None => Ok(None),
+                    }
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[derive(Clone)]
+pub struct WorkspaceMemberGateway {
+    session: SqlxSession,
+}
+
+impl WorkspaceMemberGateway {
+    pub fn new(session: SqlxSession) -> Self {
+        Self { session }
+    }
+
+    fn get_workspace_member(row: &PgRow) -> AppResult<WorkspaceMember> {
+        let role = match row.try_get::<String, _>("role")?.as_str() {
+            "admin" => WorkspaceMemberRole::Admin,
+            _ => WorkspaceMemberRole::Member,
+        };
+        let status = match row.try_get::<String, _>("status")?.as_str() {
+            "active" => WorkspaceMemberStatus::Active,
+            "inactive" => WorkspaceMemberStatus::Inactive,
+            _ => WorkspaceMemberStatus::Awaiting,
+        };
+        Ok(WorkspaceMember {
+            id: Id::new(row.try_get("id")?),
+            workspace_id: Id::new(row.try_get("workspace_id")?),
+            user_id: Id::new(row.try_get("user_id")?),
+            role,
+            joined_at: row.try_get("joined_at")?,
+            invited_by: Id::new(row.try_get("invited_by")?),
+            status,
+            created_at: row.try_get("created_at")?,
+        })
+    }
+}
+
+#[async_trait]
+impl WorkspaceMemberWriter for WorkspaceMemberGateway {
+    async fn insert(&self, workspace_member: WorkspaceMember) -> AppResult<Id<WorkspaceMember>> {
+        self.session
+            .with_tx(|tx| {
+                let workspace_member = workspace_member.clone();
+                async move {
+                    let role = match workspace_member.role {
+                        WorkspaceMemberRole::Admin => "admin",
+                        WorkspaceMemberRole::Member => "member",
+                    };
+                    let row = sqlx::query(
+                        r#"
+                        INSERT INTO workspace_members
+                            (id, workspace_id, user_id, role, joined_at, invited_by, status, created_at)
+                        VALUES
+                            ($1, $2, $3, $4::workspace_member_role, now(), $5, 'active', now())
+                    "#,
+                    )
+                    .bind(workspace_member.id.value)
+                    .bind(workspace_member.workspace_id.value)
+                    .bind(workspace_member.user_id.value)
+                    .bind(role)
+                    .bind(workspace_member.invited_by.value)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+
+                    let id: Uuid = row.try_get("id")?;
+                    Ok(Id::new(id))
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl WorkspaceMemberReader for WorkspaceMemberGateway {
+    async fn get(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<Option<WorkspaceMember>> {
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                let user_id = user_id.value;
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                            SELECT
+                                id,
+                                workspace_id,
+                                user_id,
+                                role,
+                                joined_at,
+                                invited_by,
+                                status,
+                                created_at
+                            FROM workspace_members
+                            WHERE workspace_id = $1 AND user_id = $2
+                        "#,
+                    )
+                    .bind(workspace_id)
+                    .bind(user_id)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    match row {
+                        Some(row) => Ok(Some(Self::get_workspace_member(&row)?)),
+                        None => Ok(None),
+                    }
                 }
                 .boxed()
             })
