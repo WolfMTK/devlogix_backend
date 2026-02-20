@@ -67,7 +67,7 @@ pub struct S3Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceInviteConfig {
     pub ttl: i64,
-    pub incite_url: String,
+    pub invite_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

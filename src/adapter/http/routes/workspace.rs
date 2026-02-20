@@ -347,7 +347,7 @@ pub async fn invite_workspace_member(
         workspace_id,
         email: payload.email.to_string(),
         ttl: config.workspace_invite.ttl,
-        invite_url: config.workspace_invite.incite_url.clone(),
+        invite_url: config.workspace_invite.invite_url.clone(),
     };
     interactor.execute(dto).await?;
 

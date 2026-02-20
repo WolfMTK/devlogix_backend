@@ -46,4 +46,4 @@ region = "us-east-1"
 
 [workspace_invite]
 ttl = 86400
-reset_url = "http://127.0.0.1:5173/workspaces/invites/accept"
+invite_url = "http://127.0.0.1:5173/workspaces/invites/accept"

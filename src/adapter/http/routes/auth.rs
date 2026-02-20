@@ -656,7 +656,7 @@ mod tests {
             },
             workspace_invite: WorkspaceInviteConfig {
                 ttl: 86_400,
-                incite_url: "http://localhost/workspaces/invites/accept".to_string(),
+                invite_url: "http://localhost/workspaces/invites/accept".to_string(),
             },
         })
     }
