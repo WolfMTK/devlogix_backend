@@ -18,6 +18,7 @@ pub trait WorkspaceReader: Send + Sync {
     async fn find_accessible_by_user(&self, user_id: &Id<User>, limit: i64, offset: i64) -> AppResult<Vec<Workspace>>;
     async fn count_accessible_by_user(&self, user_id: &Id<User>) -> AppResult<i64>;
     async fn is_accessible_by_user(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<bool>;
+    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<Workspace>>;
 }
 
 #[async_trait]
