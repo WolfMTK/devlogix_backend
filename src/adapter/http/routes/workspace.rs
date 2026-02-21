@@ -12,6 +12,7 @@ use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::MessageResponse;
 use crate::adapter::http::schema::pagination::PaginationQuery;
+use crate::adapter::http::schema::user::GetUserResponse;
 use crate::adapter::http::schema::workspace::{
     AcceptInviteQuery, CreateWorkspaceRequest, GetWorkspaceResponse, InviteWorkspaceMemberRequest,
     WorkspaceListResponse,
@@ -23,8 +24,8 @@ use crate::application::dto::workspace::{
 };
 use crate::application::interactors::workspace::{
     AcceptWorkpspaceInviteIneractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
-    DeleteWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor, GetWorkspaceLogoInteractor,
-    InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
+    GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
 };
 use crate::infra::config::AppConfig;
 
@@ -403,6 +404,30 @@ pub async fn get_workspace(
             visibility: workspace.visibility,
             created_at: workspace.created_at,
             updated_at: workspace.updated_at,
+        }),
+    ))
+}
+
+pub async fn get_owner_workspace(
+    auth_user: AuthUser,
+    intearctor: GetOwnerWorkspaceInteractor,
+    Path((workspace_id, slug)): Path<(String, String)>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetWorkspaceDTO {
+        user_id: auth_user.user_id,
+        workspace_id: workspace_id,
+        slug: slug,
+    };
+    let user = intearctor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(GetUserResponse {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
         }),
     ))
 }
