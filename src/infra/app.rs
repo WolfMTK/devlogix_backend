@@ -1,7 +1,7 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
 use axum::routing::{delete, get, patch, post};
-use axum::{Router, middleware};
+use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -91,9 +91,9 @@ pub fn workspace_router(state: AppState) -> Router<AppState> {
         .route("/", post(create_workspace))
         .route("/", get(get_workspace_list))
         .route("/{workspace_id}/{slug}", get(get_workspace))
+        .route("/{workspace_id}/{slug}/owner", get(get_owner_workspace))
         .route("/{workspace_id}", patch(update_workspace))
         .route("/{workspace_id}", delete(delete_workspace))
-        .route("/{workspace_id}/owner", get(get_owner_workspace))
         .route("/{workspace_id}/check-owner", get(check_workspace_owner))
         .route("/{workspace_id}/invites", post(invite_workspace_member))
         .route("/invites/accept", get(accept_workpsace_invite))
