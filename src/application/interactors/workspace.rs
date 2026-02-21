@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use slug::slugify;
 use tracing::{error, info};
-use uuid::Uuid;
 
 use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::user::UserDTO;
 use crate::application::dto::workspace::{
     AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceDTO,
     GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO, WorkspaceDTO,
@@ -12,6 +11,7 @@ use crate::application::dto::workspace::{
 };
 use crate::application::interface::db::DBSession;
 use crate::application::interface::email::EmailSender;
+use crate::application::interface::gateway::user::UserReader;
 use crate::application::interface::gateway::workspace::{
     WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspaceReader,
     WorkspaceWriter,
@@ -210,8 +210,7 @@ impl UpdateWorkspaceInteractor {
         }
 
         if let Some(name) = dto.name {
-            // TODO: transfer slug creation to Workspace
-            workspace.slug = slugify(&name);
+            workspace.set_slug(&name);
             workspace.name = name;
         }
 
@@ -378,13 +377,21 @@ impl InviteWorkspaceMemberInteractor {
             }
         }
 
-        self.workspace_invite_writer
-            .delete_by_email(&workspace_id, &dto.email)
+        let existing_invite = self
+            .workspace_invite_reader
+            .find_by_email(&workspace_id, &dto.email)
             .await?;
 
-        let token = Uuid::now_v7();
-        let workspace_invite =
-            WorkspaceInvite::new(workspace_id, dto.email.clone(), token.to_string(), user_id, dto.ttl);
+        if let Some(invite) = existing_invite {
+            if invite.is_pending() {
+                return Err(AppError::InviteAlreadyExists);
+            }
+            self.workspace_invite_writer
+                .delete_by_email(&workspace_id, &dto.email)
+                .await?;
+        }
+
+        let workspace_invite = WorkspaceInvite::new(workspace_id, dto.email.clone(), user_id, dto.ttl);
         let invite_token = workspace_invite.invite_token.clone();
 
         self.workspace_invite_writer.insert(workspace_invite).await?;
@@ -520,6 +527,54 @@ impl GetWorkspaceInteractor {
             created_at: workspace.created_at,
             updated_at: workspace.updated_at,
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct GetOwnerWorkspaceInteractor {
+    workspace_reader: Arc<dyn WorkspaceReader>,
+    user_reader: Arc<dyn UserReader>,
+}
+
+impl GetOwnerWorkspaceInteractor {
+    pub fn new(workspace_reader: Arc<dyn WorkspaceReader>, user_reader: Arc<dyn UserReader>) -> Self {
+        Self {
+            workspace_reader,
+            user_reader,
+        }
+    }
+
+    pub async fn execute(&self, dto: GetWorkspaceDTO) -> AppResult<UserDTO> {
+        let user_id: Id<User> = dto.user_id.try_into()?;
+        let workspace_id: Id<Workspace> = dto.workspace_id.try_into()?;
+
+        let workspace = self
+            .workspace_reader
+            .find_by_id_and_slug(&workspace_id, &dto.slug)
+            .await?
+            .ok_or(AppError::WorkspaceNotFound)?;
+
+        let accessible = self
+            .workspace_reader
+            .is_accessible_by_user(&workspace_id, &user_id)
+            .await?;
+
+        if !accessible {
+            return Err(AppError::AccessDenied);
+        }
+
+        let user = self.user_reader.find_by_id(&workspace.owner_user_id).await?;
+
+        match user {
+            Some(user) => Ok(UserDTO {
+                id: user.id.value.to_string(),
+                username: user.username,
+                email: user.email,
+                created_at: user.created_at,
+                updated_at: user.updated_at,
+            }),
+            None => Err(AppError::AccessDenied),
+        }
     }
 }
 
