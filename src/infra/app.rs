@@ -1,7 +1,7 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
 use axum::routing::{delete, get, patch, post};
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;

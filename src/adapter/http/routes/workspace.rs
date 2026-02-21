@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
-use axum::Json;
 use bytes::Bytes;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
@@ -205,6 +205,48 @@ pub async fn get_workspace_list(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{workspace_id}/storage/{file_name}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+        ("file_name" = String, Path, description = "Logo file name"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace logo image",
+            content_type = "application/octet-stream",
+            body = Vec<u8>
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Logo not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Logo not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_workspace_logo(
     auth_user: AuthUser,
     interactor: GetWorkspaceLogoInteractor,
@@ -227,6 +269,58 @@ pub async fn get_workspace_logo(
     Ok((StatusCode::OK, headers, Body::from(logo.data)))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/workspaces/{workspace_id}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+    ),
+    request_body(
+        content_type = "multipart/form-data",
+        content = CreateWorkspaceRequest,
+        description = "Workspace fields to update (all optional) + optional logo image"
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace updated",
+            body = MessageResponse,
+            example = json!({ "message": "Workspace updated successfully" })
+        ),
+        (
+            status = 400,
+            description = "Validation error or unsupported image format",
+            body = ErrorResponse,
+            example = json!({ "error": "Unsupported image format" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn update_workspace(
     auth_user: AuthUser,
     interactor: UpdateWorkspaceInteractor,
@@ -298,6 +392,47 @@ pub async fn update_workspace(
     ))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/workspaces/{workspace_id}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace deleted",
+            body = MessageResponse,
+            example = json!({ "message": "Workspace deleted successfully" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn delete_workspace(
     auth_user: AuthUser,
     interactor: DeleteWorkspaceInteractor,
@@ -317,6 +452,41 @@ pub async fn delete_workspace(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{workspace_id}/check-owner",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "User is the workspace owner",
+            body = MessageResponse,
+            example = json!({ "message": "Access granted" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Not the workspace owner",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn check_workspace_owner(
     auth_user: AuthUser,
     interactor: CheckWorkspaceOwnerInteractor,
@@ -336,6 +506,51 @@ pub async fn check_workspace_owner(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/workspaces/{workspace_id}/invites",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+    ),
+    request_body(
+        content = InviteWorkspaceMemberRequest,
+        example = json!({ "email": "invitee@example.com" })
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Invite sent",
+            body = MessageResponse,
+            example = json!({ "message": "Invite sent successfully" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn invite_workspace_member(
     auth_user: AuthUser,
     interactor: InviteWorkspaceMemberInteractor,
@@ -360,6 +575,39 @@ pub async fn invite_workspace_member(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/invites/accept",
+    tag = "Workspaces",
+    params(AcceptInviteQuery),
+    responses(
+        (
+            status = 200,
+            description = "Invite accepted",
+            body = MessageResponse,
+            example = json!({ "message": "Invite accepted successfully" })
+        ),
+        (
+            status = 400,
+            description = "Invalid or expired token",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid or expired token" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn accept_workspace_invite(
     auth_user: AuthUser,
     interactor: AcceptWorkspaceInviteInteractor,
@@ -379,6 +627,59 @@ pub async fn accept_workspace_invite(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{workspace_id}/{slug}",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+        ("slug" = String, Path, description = "Workspace slug"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace details",
+            body = GetWorkspaceResponse,
+            example = json!({
+                "id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a",
+                "owner_user_id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761b",
+                "name": "My Workspace",
+                "description": null,
+                "slug": "my-workspace",
+                "logo": null,
+                "primary_color": "#FF5733",
+                "visibility": "private",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_workspace(
     auth_user: AuthUser,
     interactor: GetWorkspaceInteractor,
@@ -408,6 +709,54 @@ pub async fn get_workspace(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/{workspace_id}/{slug}/owner",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID"),
+        ("slug" = String, Path, description = "Workspace slug"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace owner user",
+            body = GetUserResponse,
+            example = json!({
+                "id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a",
+                "username": "owner",
+                "email": "owner@example.com",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_owner_workspace(
     auth_user: AuthUser,
     interactor: GetOwnerWorkspaceInteractor,
