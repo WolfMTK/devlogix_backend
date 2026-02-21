@@ -5,6 +5,7 @@ use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[allow(dead_code)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub description: Option<String>,
