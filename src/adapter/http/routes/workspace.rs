@@ -410,7 +410,7 @@ pub async fn get_workspace(
 
 pub async fn get_owner_workspace(
     auth_user: AuthUser,
-    intearctor: GetOwnerWorkspaceInteractor,
+    interactor: GetOwnerWorkspaceInteractor,
     Path((workspace_id, slug)): Path<(String, String)>,
 ) -> AppResult<impl IntoResponse> {
     let dto = GetWorkspaceDTO {
@@ -418,7 +418,7 @@ pub async fn get_owner_workspace(
         workspace_id: workspace_id,
         slug: slug,
     };
-    let user = intearctor.execute(dto).await?;
+    let user = interactor.execute(dto).await?;
 
     Ok((
         StatusCode::OK,
