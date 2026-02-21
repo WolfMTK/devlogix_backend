@@ -14,7 +14,7 @@ use crate::adapter::http::routes::auth::{
 };
 use crate::adapter::http::routes::user::{get_me, register, update_user};
 use crate::adapter::http::routes::workspace::{
-    accept_workpsace_invite, check_workspace_owner, create_workspace, delete_workspace, get_owner_workspace,
+    accept_workspace_invite, check_workspace_owner, create_workspace, delete_workspace, get_owner_workspace,
     get_workspace, get_workspace_list, get_workspace_logo, invite_workspace_member, update_workspace,
 };
 use crate::infra::config::AppConfig;
@@ -96,7 +96,7 @@ pub fn workspace_router(state: AppState) -> Router<AppState> {
         .route("/{workspace_id}", delete(delete_workspace))
         .route("/{workspace_id}/check-owner", get(check_workspace_owner))
         .route("/{workspace_id}/invites", post(invite_workspace_member))
-        .route("/invites/accept", get(accept_workpsace_invite))
+        .route("/invites/accept", get(accept_workspace_invite))
         .route("/{workspace_id}/storage/{file_name}", get(get_workspace_logo))
         .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));

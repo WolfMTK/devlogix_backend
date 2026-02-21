@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
+use axum::Json;
 use bytes::Bytes;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
@@ -360,7 +360,7 @@ pub async fn invite_workspace_member(
     ))
 }
 
-pub async fn accept_workpsace_invite(
+pub async fn accept_workspace_invite(
     auth_user: AuthUser,
     interactor: AcceptWorkpspaceInviteIneractor,
     Query(query): Query<AcceptInviteQuery>,
