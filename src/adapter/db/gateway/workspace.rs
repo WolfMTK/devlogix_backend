@@ -99,17 +99,17 @@ impl WorkspaceWriter for WorkspaceGateway {
 
                     sqlx::query(
                         r#"
-                        UPDATE workspaces
-                        SET
-                            name = $2,
-                            description = $3,
-                            primary_color = $4,
-                            visibility = $5::workspace_visibility,
-                            logo = $6,
-                            slug = $7,
-                            updated_at = now()
-                        WHERE id = $1
-                    "#,
+                            UPDATE workspaces
+                            SET
+                                name = $2,
+                                description = $3,
+                                primary_color = $4,
+                                visibility = $5::workspace_visibility,
+                                logo = $6,
+                                slug = $7,
+                                updated_at = now()
+                            WHERE id = $1
+                        "#,
                     )
                     .bind(workspace.id.value)
                     .bind(workspace.name)
@@ -161,20 +161,20 @@ impl WorkspaceReader for WorkspaceGateway {
                 async move {
                     let row = sqlx::query(
                         r#"
-                        SELECT
-                            id,
-                            owner_user_id,
-                            name,
-                            description,
-                            slug,
-                            logo,
-                            primary_color,
-                            visibility::TEXT,
-                            created_at,
-                            updated_at
-                        FROM workspaces
-                        WHERE id = $1
-                    "#,
+                            SELECT
+                                id,
+                                owner_user_id,
+                                name,
+                                description,
+                                slug,
+                                logo,
+                                primary_color,
+                                visibility::TEXT,
+                                created_at,
+                                updated_at
+                            FROM workspaces
+                            WHERE id = $1
+                        "#,
                     )
                     .bind(workspace_id)
                     .fetch_optional(tx.as_mut())
@@ -244,20 +244,20 @@ impl WorkspaceReader for WorkspaceGateway {
                 async move {
                     let row = sqlx::query(
                         r#"
-                                SELECT COUNT(w.id) AS total
-                                FROM
-                                    workspaces AS w
-                                WHERE
-                                    w.owner_user_id= $1
-                                    OR EXISTS(
-                                        SELECT 1
-                                        FROM
-                                            workspace_members AS wm
-                                        WHERE wm.workspace_id = w.id
-                                            AND wm.user_id = $1
-                                            AND wm.status = 'active'
-                                    )
-                            "#,
+                            SELECT COUNT(w.id) AS total
+                            FROM
+                                workspaces AS w
+                            WHERE
+                                w.owner_user_id= $1
+                                OR EXISTS(
+                                    SELECT 1
+                                    FROM
+                                        workspace_members AS wm
+                                    WHERE wm.workspace_id = w.id
+                                        AND wm.user_id = $1
+                                        AND wm.status = 'active'
+                                )
+                        "#,
                     )
                     .bind(user_id)
                     .fetch_one(tx.as_mut())
@@ -278,25 +278,25 @@ impl WorkspaceReader for WorkspaceGateway {
                 async move {
                     let row = sqlx::query(
                         r#"
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM
-                                workspaces AS w
-                            WHERE
-                                w.id = $1
-                                AND (
-                                    w.owner_user_id = $2
-                                    OR EXISTS(
-                                        SELECT 1
-                                        FROM
-                                            workspace_members AS wm
-                                        WHERE wm.workspace_id = w.id
-                                            AND wm.user_id = $2
-                                            AND wm.status = 'active'
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM
+                                    workspaces AS w
+                                WHERE
+                                    w.id = $1
+                                    AND (
+                                        w.owner_user_id = $2
+                                        OR EXISTS(
+                                            SELECT 1
+                                            FROM
+                                                workspace_members AS wm
+                                            WHERE wm.workspace_id = w.id
+                                                AND wm.user_id = $2
+                                                AND wm.status = 'active'
+                                        )
                                     )
-                                )
-                        ) AS accessible
-                    "#,
+                            ) AS accessible
+                        "#,
                     )
                     .bind(workspace_id)
                     .bind(user_id)
@@ -318,20 +318,20 @@ impl WorkspaceReader for WorkspaceGateway {
                 async move {
                     let row = sqlx::query(
                         r#"
-                        SELECT
-                            id,
-                            owner_user_id,
-                            name,
-                            description,
-                            slug,
-                            logo,
-                            primary_color,
-                            visibility::TEXT,
-                            updated_at,
-                            created_at
-                        FROM workspaces
-                        WHERE workspaces.id = $1 AND slug = $2
-                    "#,
+                            SELECT
+                                id,
+                                owner_user_id,
+                                name,
+                                description,
+                                slug,
+                                logo,
+                                primary_color,
+                                visibility::TEXT,
+                                updated_at,
+                                created_at
+                            FROM workspaces
+                            WHERE workspaces.id = $1 AND slug = $2
+                        "#,
                     )
                     .bind(workspace_id)
                     .bind(slug)
@@ -413,10 +413,10 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                 async move {
                     sqlx::query(
                         r#"
-                        UPDATE workspace_invites
-                        SET accepted_at = now()
-                        WHERE id = $1
-                    "#,
+                            UPDATE workspace_invites
+                            SET accepted_at = now()
+                            WHERE id = $1
+                        "#,
                     )
                     .bind(workspace_invite_id)
                     .execute(tx.as_mut())
@@ -436,9 +436,9 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                 async move {
                     sqlx::query(
                         r#"
-                        DELETE FROM workspace_invites
-                        WHERE workspace_id = $1 AND email = $2
-                    "#,
+                            DELETE FROM workspace_invites
+                            WHERE workspace_id = $1 AND email = $2
+                        "#,
                     )
                     .bind(workspace_id)
                     .bind(email)
@@ -462,21 +462,59 @@ impl WorkspaceInviteReader for WorkspaceInviteGateway {
                 async move {
                     let row = sqlx::query(
                         r#"
-                        SELECT
-                            id,
-                            workspace_id,
-                            email,
-                            invite_token,
-                            invited_by,
-                            expires_at,
-                            accepted_at,
-                            revoked_at,
-                            created_at
-                        FROM workspace_invites
-                        WHERE workspace_invites.invite_token = $1
-                    "#,
+                            SELECT
+                                id,
+                                workspace_id,
+                                email,
+                                invite_token,
+                                invited_by,
+                                expires_at,
+                                accepted_at,
+                                revoked_at,
+                                created_at
+                            FROM workspace_invites
+                            WHERE workspace_invites.invite_token = $1
+                        "#,
                     )
                     .bind(token)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    match row {
+                        Some(row) => Ok(Some(Self::get_workspace_invite(&row)?)),
+                        None => Ok(None),
+                    }
+                }
+                .boxed()
+            })
+            .await
+    }
+
+    async fn find_by_email(&self, workspace_id: &Id<Workspace>, email: &str) -> AppResult<Option<WorkspaceInvite>> {
+        self.session
+            .with_tx(|tx| {
+                let email = email.to_owned();
+                let workspace_id = workspace_id.value;
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                            SELECT
+                                id,
+                                workspace_id,
+                                email,
+                                invite_token,
+                                invited_by,
+                                expires_at,
+                                accepted_at,
+                                revoked_at,
+                                created_at
+                            FROM workspace_invites
+                            WHERE workspace_invites.email = $1
+                                AND workspace_invites.workspace_id = $2
+                        "#,
+                    )
+                    .bind(email)
+                    .bind(workspace_id)
                     .fetch_optional(tx.as_mut())
                     .await?;
 
@@ -537,12 +575,12 @@ impl WorkspaceMemberWriter for WorkspaceMemberGateway {
                     };
                     let row = sqlx::query(
                         r#"
-                        INSERT INTO workspace_members
-                            (id, workspace_id, user_id, role, joined_at, invited_by, status, created_at)
-                        VALUES
-                            ($1, $2, $3, $4::workspace_member_role, now(), $5, 'active', now())
-                        RETURNING id
-                    "#,
+                            INSERT INTO workspace_members
+                                (id, workspace_id, user_id, role, joined_at, invited_by, status, created_at)
+                            VALUES
+                                ($1, $2, $3, $4::workspace_member_role, now(), $5, 'active', now())
+                            RETURNING id
+                        "#,
                     )
                     .bind(workspace_member.id.value)
                     .bind(workspace_member.workspace_id.value)

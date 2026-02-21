@@ -31,6 +31,7 @@ pub trait WorkspaceInviteWriter: Send + Sync {
 #[async_trait]
 pub trait WorkspaceInviteReader: Send + Sync {
     async fn find_by_token(&self, token: &str) -> AppResult<Option<WorkspaceInvite>>;
+    async fn find_by_email(&self, workspace_id: &Id<Workspace>, email: &str) -> AppResult<Option<WorkspaceInvite>>;
 }
 
 #[async_trait]
