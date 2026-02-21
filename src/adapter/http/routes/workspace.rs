@@ -23,7 +23,7 @@ use crate::application::dto::workspace::{
     GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO,
 };
 use crate::application::interactors::workspace::{
-    AcceptWorkpspaceInviteIneractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
+    AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
     DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
     GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
 };
@@ -362,7 +362,7 @@ pub async fn invite_workspace_member(
 
 pub async fn accept_workspace_invite(
     auth_user: AuthUser,
-    interactor: AcceptWorkpspaceInviteIneractor,
+    interactor: AcceptWorkspaceInviteInteractor,
     Query(query): Query<AcceptInviteQuery>,
 ) -> AppResult<impl IntoResponse> {
     let dto = AcceptWorkspaceInviteDTO {

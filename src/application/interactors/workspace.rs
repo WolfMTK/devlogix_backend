@@ -422,7 +422,7 @@ impl InviteWorkspaceMemberInteractor {
 }
 
 #[derive(Clone)]
-pub struct AcceptWorkpspaceInviteIneractor {
+pub struct AcceptWorkspaceInviteInteractor {
     db_session: Arc<dyn DBSession>,
     workspace_invite_reader: Arc<dyn WorkspaceInviteReader>,
     workspace_invite_writer: Arc<dyn WorkspaceInviteWriter>,
@@ -430,7 +430,7 @@ pub struct AcceptWorkpspaceInviteIneractor {
     workspace_member_writer: Arc<dyn WorkspaceMemberWriter>,
 }
 
-impl AcceptWorkpspaceInviteIneractor {
+impl AcceptWorkspaceInviteInteractor {
     pub fn new(
         db_session: Arc<dyn DBSession>,
         workspace_invite_reader: Arc<dyn WorkspaceInviteReader>,

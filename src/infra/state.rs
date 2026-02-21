@@ -18,7 +18,7 @@ use crate::application::interactors::password_reset::{RequestPasswordResetIntera
 use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 use crate::application::interactors::workspace::{
-    AcceptWorkpspaceInviteIneractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
+    AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
     DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
     GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
 };
@@ -526,13 +526,13 @@ where
 
 // AcceptWorkpspaceInviteIneractor
 #[async_trait]
-impl FromAppState for AcceptWorkpspaceInviteIneractor {
+impl FromAppState for AcceptWorkspaceInviteInteractor {
     async fn from_app_state(state: &AppState) -> AppResult<Self> {
         let session = SqlxSession::new_lazy(state.pool.clone());
         let workspace_member_gateway = WorkspaceMemberGateway::new(session.clone());
         let workspace_invite_gateway = WorkspaceInviteGateway::new(session.clone());
 
-        Ok(AcceptWorkpspaceInviteIneractor::new(
+        Ok(AcceptWorkspaceInviteInteractor::new(
             Arc::new(session),
             Arc::new(workspace_invite_gateway.clone()),
             Arc::new(workspace_invite_gateway),
@@ -542,7 +542,7 @@ impl FromAppState for AcceptWorkpspaceInviteIneractor {
     }
 }
 
-impl<S> FromRequestParts<S> for AcceptWorkpspaceInviteIneractor
+impl<S> FromRequestParts<S> for AcceptWorkspaceInviteInteractor
 where
     S: Send + Sync,
     AppState: FromRef<S>,
@@ -551,7 +551,7 @@ where
 
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
-        AcceptWorkpspaceInviteIneractor::from_app_state(&app_state).await
+        AcceptWorkspaceInviteInteractor::from_app_state(&app_state).await
     }
 }
 
