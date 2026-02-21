@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Duration, Utc};
 use slug::slugify;
+use uuid::Uuid;
 
 use crate::application::app_error::AppError;
 use crate::domain::entities::id::Id;
@@ -63,6 +64,10 @@ impl Workspace {
             updated_at: now,
         }
     }
+
+    pub fn set_slug(&mut self, name: &str) {
+        self.slug = slugify(name)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,9 +89,11 @@ pub struct WorkspaceMember {
     pub workspace_id: Id<Workspace>,
     pub user_id: Id<User>,
     pub role: WorkspaceMemberRole,
+    #[allow(dead_code)]
     pub joined_at: Option<DateTime<Utc>>,
     pub invited_by: Id<User>,
     pub status: WorkspaceMemberStatus,
+    #[allow(dead_code)]
     pub created_at: DateTime<Utc>,
 }
 
@@ -125,19 +132,14 @@ pub struct WorkspaceInvite {
 }
 
 impl WorkspaceInvite {
-    pub fn new(
-        workspace_id: Id<Workspace>,
-        email: String,
-        invite_token: String,
-        invited_by: Id<User>,
-        ttl: i64,
-    ) -> Self {
+    pub fn new(workspace_id: Id<Workspace>, email: String, invited_by: Id<User>, ttl: i64) -> Self {
         let now = Utc::now();
+        let invite_token = Uuid::now_v7();
         Self {
             id: Id::generate(),
             workspace_id,
             email,
-            invite_token,
+            invite_token: invite_token.to_string(),
             invited_by,
             expires_at: now + Duration::seconds(ttl),
             accepted_at: None,
