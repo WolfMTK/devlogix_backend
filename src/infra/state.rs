@@ -19,8 +19,8 @@ use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 use crate::application::interactors::workspace::{
     AcceptWorkpspaceInviteIneractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
-    DeleteWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor, GetWorkspaceLogoInteractor,
-    InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
+    GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
 };
 use crate::application::interface::crypto::CredentialsHasher;
 use crate::application::interface::email::EmailSender;
@@ -576,5 +576,33 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         GetWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetOwnerWorkspaceInteractor
+#[async_trait]
+impl FromAppState for GetOwnerWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let user_gateway = UserGateway::new(session);
+
+        Ok(GetOwnerWorkspaceInteractor::new(
+            Arc::new(workspace_gateway),
+            Arc::new(user_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetOwnerWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetOwnerWorkspaceInteractor::from_app_state(&app_state).await
     }
 }
