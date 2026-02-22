@@ -2,6 +2,8 @@ mod adapter;
 mod application;
 mod domain;
 mod infra;
+#[cfg(test)]
+mod tests;
 
 use std::env;
 
