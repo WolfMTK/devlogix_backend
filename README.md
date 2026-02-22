@@ -78,6 +78,30 @@ cargo run
 cargo build --release
 ```
 
+## Testing
+
+###
+
+Environment Variables for Testing
+
+'''
+# DATABASE
+export TEST_DATABASE_URL="postgres://postgres:password@localhost:5432/test"
+
+# S3-STORAGE
+export TEST_S3_ENDPOINT="http://127.0.0.1:9000"
+export TEST_S3_ACCESS_KEY="admin"
+export TEST_S3_SECRET_KEY="password"
+export TEST_S3_REGION="us-east-1"
+
+# SMTP
+export TEST_SMTP_HOST="smtp.example.com"
+export TEST_SMTP_PORT="587"
+export TEST_SMTP_USERNAME="user"
+export TEST_SMTP_PASSWORD="pass"
+export TEST_SMTP_FROM="example@example.com"
+'''
+
 ## Configuration
 
 ### Application parameters
