@@ -25,11 +25,11 @@ pub fn test_config() -> AppConfig {
             max_connections: 5,
         },
         logger: LoggerConfig {
-            log_path: "./test.log".to_string(),
+            log_path: "./test_logs".to_string(),
         },
         application: ApplicationConfig {
             allow_origins: vec!["*".to_string()],
-            address: std::env::var("TEST_APP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3000".to_string()),
+            address: std::env::var("TEST_APP_ADDRESS").expect("TEST_APP_ADDRESS must be set"),
         },
         session: SessionConfig {
             default_max_lifetime: 86_400,
@@ -37,7 +37,7 @@ pub fn test_config() -> AppConfig {
             remembered_max_lifetime: 2_592_000,
             remembered_idle_timeout: 86_400,
             rotation_interval: 900,
-            cookie_name: std::env::var("TEST_COOKIE_NAME").unwrap_or_else(|_| "session_id".to_string()),
+            cookie_name: std::env::var("TEST_COOKIE_NAME").expect("TEST_COOKIE_NAME must be set"),
             cookie_secure: false,
             cookie_http_only: true,
         },
@@ -50,24 +50,24 @@ pub fn test_config() -> AppConfig {
             local_output_dir: "./tmp/test-integration-emails".to_string(),
         },
         smtp: SMTPConfig {
-            host: std::env::var("TEST_SMTP_HOST").unwrap_or_else(|_| "smtp.example.com".to_string()),
+            host: std::env::var("TEST_SMTP_HOST").expect("TEST_SMTP_HOST must be set"),
             port: std::env::var("TEST_SMTP_PORT")
-                .unwrap_or_else(|_| "587".to_string())
+                .expect("TEST_SMTP_PORT must be set")
                 .parse::<u16>()
-                .unwrap(),
-            username: std::env::var("TEST_SMTP_USERNAME").unwrap_or_default(),
-            password: std::env::var("TEST_SMTP_PASSWORD").unwrap_or_default(),
-            from: std::env::var("TEST_SMTP_FROM").unwrap_or_else(|_| "test@example.com".to_string()),
+                .expect("TEST_SMTP_PORT must be a number"),
+            username: std::env::var("TEST_SMTP_USERNAME").expect("TEST_SMTP_USERNAME must be set"),
+            password: std::env::var("TEST_SMTP_PASSWORD").expect("TEST_SMTP_PASSWORD must be set"),
+            from: std::env::var("TEST_SMTP_FROM").expect("TEST_SMTP_FROM must be set"),
         },
         password_reset: PasswordResetConfig {
             ttl: 3_600,
             reset_url: "http://localhost/reset-password".to_string(),
         },
         s3: S3Config {
-            access_key: std::env::var("TEST_S3_ACCESS_KEY").unwrap_or_else(|_| "admin".to_string()),
-            secret_key: std::env::var("TEST_S3_SECRET_KEY").unwrap_or_else(|_| "password".to_string()),
-            endpoint: std::env::var("TEST_S3_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9000".to_string()),
-            region: std::env::var("TEST_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            access_key: std::env::var("TEST_S3_ACCESS_KEY").expect("TEST_S3_ACCESS_KEY must be set"),
+            secret_key: std::env::var("TEST_S3_SECRET_KEY").expect("TEST_S3_SECRET_KEY must be set"),
+            endpoint: std::env::var("TEST_S3_ENDPOINT").expect("TEST_S3_ENDPOINT must be set"),
+            region: std::env::var("TEST_S3_REGION").expect("TEST_S3_REGION must be set"),
         },
         workspace_invite: WorkspaceInviteConfig {
             ttl: 86_400,
