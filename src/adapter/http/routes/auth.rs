@@ -420,540 +420,456 @@ pub async fn reset_password(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use async_trait::async_trait;
-    use axum::Json;
-    use axum::extract::{Query, State};
-    use axum::http::StatusCode;
+    use axum::body::Body;
     use axum::http::header::SET_COOKIE;
-    use axum::response::IntoResponse;
-    use chrono::Utc;
-    use mockall::mock;
-    use serde_json::json;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use rstest::rstest;
+    use serde_json::Value;
+    use serial_test::serial;
+    use tower::ServiceExt;
+    use uuid::Uuid;
 
-    use super::{confirm_email, forgot_password, login, logout, resend_confirmation, reset_password};
-    use crate::adapter::http::middleware::extractor::AuthUser;
-    use crate::adapter::http::schema::auth::{LoginRequest, ResendConfirmationRequest};
-    use crate::adapter::http::schema::email_confirmation::ConfirmEmailQuery;
-    use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
-    use crate::adapter::http::validation::ValidJson;
-    use crate::application::app_error::AppResult;
-    use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
-    use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
-    use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
-    use crate::application::interface::crypto::CredentialsHasher;
-    use crate::application::interface::db::DBSession;
-    use crate::application::interface::email::EmailSender;
-    use crate::application::interface::gateway::email_confirmation::{
-        EmailConfirmationReader, EmailConfirmationWriter,
-    };
-    use crate::application::interface::gateway::password_reset::{PasswordResetTokenReader, PasswordResetTokenWriter};
-    use crate::application::interface::gateway::session::SessionWriter;
-    use crate::application::interface::gateway::user::{UserReader, UserWriter};
-    use crate::domain::entities::email_confirmation::EmailConfirmation;
-    use crate::domain::entities::id::Id;
-    use crate::domain::entities::password_reset::PasswordResetToken;
-    use crate::domain::entities::session::Session;
-    use crate::domain::entities::user::User;
-    use crate::infra::config::{
-        AppConfig, ApplicationConfig, DatabaseConfig, EmailConfig, EmailConfirmationConfig, LoggerConfig,
-        PasswordResetConfig, S3Config, SMTPConfig, SessionConfig, WorkspaceInviteConfig,
+    use crate::infra::app::create_app;
+    use crate::infra::state::AppState;
+    use crate::tests::fixtures::init_test_app_state;
+    use crate::tests::helpers::{
+        delete_user, hash_password, insert_confirmed_user, insert_email_confirmation, insert_password_reset_token,
+        insert_session, insert_unconfirmed_user, session_cookie, unique_credentials,
     };
 
-    mock! {
-        pub DBSessionMock {}
-
-        #[async_trait]
-        impl DBSession for DBSessionMock {
-            async fn commit(&self) -> AppResult<()>;
-        }
+    // === login ===
+    fn get_request_login(body: Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/auth/login")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
     }
 
-    mock! {
-        pub SessionWriterMock {}
-
-        #[async_trait]
-        impl SessionWriter for SessionWriterMock {
-            async fn insert(&self, session: Session) -> AppResult<Id<Session>>;
-            async fn update_activity(&self, session_id: &Id<Session>, now: chrono::DateTime<Utc>) -> AppResult<()>;
-            async fn rotate(&self, old_session_id: &Id<Session>, new_session: Session) -> AppResult<Id<Session>>;
-            async fn delete(&self, session_id: &Id<Session>) -> AppResult<()>;
-            async fn delete_by_user_id(&self, user_id: &Id<User>) -> AppResult<()>;
-        }
-    }
-
-    mock! {
-        pub HasherMock {}
-
-        #[async_trait]
-        impl CredentialsHasher for HasherMock {
-            async fn hash_password(&self, password: &str) -> AppResult<String>;
-            async fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool>;
-        }
-    }
-
-    mock! {
-        pub EmailConfirmationReaderMock {}
-
-        #[async_trait]
-        impl EmailConfirmationReader for EmailConfirmationReaderMock {
-            async fn find_by_token(&self, token: &str) -> AppResult<Option<EmailConfirmation>>;
-        }
-    }
-
-    mock! {
-        pub EmailConfirmationWriterMock {}
-
-        #[async_trait]
-        impl EmailConfirmationWriter for EmailConfirmationWriterMock {
-            async fn insert(&self, email_confirmation: EmailConfirmation) -> AppResult<Id<EmailConfirmation>>;
-            async fn confirm(&self, confirmation_id: &Id<EmailConfirmation>) -> AppResult<()>;
-            async fn delete(&self, user_id: &Id<User>) -> AppResult<()>;
-        }
-    }
-
-    mock! {
-        pub EmailSenderMock {}
-
-        #[async_trait]
-        impl EmailSender for EmailSenderMock {
-            async fn send(&self, to: &str, subject: &str, body: &str) -> AppResult<()>;
-        }
-    }
-
-    mock! {
-        pub UserWriterMock {}
-
-        #[async_trait]
-        impl UserWriter for UserWriterMock {
-            async fn insert(&self, user: User) -> AppResult<Id<User>>;
-            async fn update(&self, user: User) -> AppResult<Id<User>>;
-        }
-    }
-
-    mock! {
-        pub PasswordResetTokenWriterMock {}
-
-        #[async_trait]
-        impl PasswordResetTokenWriter for PasswordResetTokenWriterMock {
-            async fn insert(&self, token: PasswordResetToken) -> AppResult<Id<PasswordResetToken>>;
-            async fn mark_as_used(&self, token_id: &Id<PasswordResetToken>) -> AppResult<()>;
-            async fn delete(&self, user_id: &Id<User>) -> AppResult<()>;
-        }
-    }
-
-    mock! {
-        pub PasswordResetTokenReaderMock {}
-
-        #[async_trait]
-        impl PasswordResetTokenReader for PasswordResetTokenReaderMock {
-            async fn find_by_token(&self, token: &str) -> AppResult<Option<PasswordResetToken>>;
-        }
-    }
-
-    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
-
-    struct MockUserReader {
-        find_by_email_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
-        find_by_id_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
-    }
-
-    impl MockUserReader {
-        fn new() -> Self {
-            Self {
-                find_by_email_fn: None,
-                find_by_id_fn: None,
-            }
-        }
-
-        fn expect_find_by_email(&mut self, f: impl Fn(&str) -> AppResult<Option<User>> + Send + Sync + 'static) {
-            self.find_by_email_fn = Some(Box::new(move |email| f(&email)));
-        }
-
-        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
-            self.find_by_id_fn = Some(Box::new(move |id| {
-                let user_id: Id<User> = id.try_into().expect("valid uuid");
-                f(&user_id)
-            }));
-        }
-    }
-
-    #[async_trait]
-    impl UserReader for MockUserReader {
-        async fn find_by_email(&self, email: &str) -> AppResult<Option<User>> {
-            (self.find_by_email_fn.as_ref().expect("find_by_email must be mocked"))(email.to_string())
-        }
-
-        async fn is_user(&self, _username: &str, _email: &str) -> AppResult<bool> {
-            Ok(false)
-        }
-
-        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
-            match &self.find_by_id_fn {
-                Some(f) => f(user_id.value.to_string()),
-                None => Ok(None),
-            }
-        }
-
-        async fn is_username_or_email_unique(
-            &self,
-            _user_id: &Id<User>,
-            _username: Option<&str>,
-            _email: Option<&str>,
-        ) -> AppResult<bool> {
-            Ok(false)
-        }
-    }
-
-    fn test_config() -> Arc<AppConfig> {
-        Arc::new(AppConfig {
-            db: DatabaseConfig {
-                url: "postgres://local/test".to_string(),
-                max_connections: 5,
-            },
-            logger: LoggerConfig {
-                log_path: "./test.log".to_string(),
-            },
-            application: ApplicationConfig {
-                allow_origins: vec!["*".to_string()],
-                address: "127.0.0.1:3000".to_string(),
-            },
-            session: SessionConfig {
-                default_max_lifetime: 86_400,
-                default_idle_timeout: 3_600,
-                remembered_max_lifetime: 2_592_000,
-                remembered_idle_timeout: 86_400,
-                rotation_interval: 900,
-                cookie_name: "session_id".to_string(),
-                cookie_secure: true,
-                cookie_http_only: true,
-            },
-            email_confirmation: EmailConfirmationConfig {
-                ttl: 86_400,
-                confirmation_url: "http://localhost/confirm".to_string(),
-            },
-            email: EmailConfig {
-                provider: "local".to_string(),
-                local_output_dir: "./tmp/test-emails".to_string(),
-            },
-            smtp: SMTPConfig {
-                host: "smtp.example.com".to_string(),
-                port: 587,
-                username: "user".to_string(),
-                password: "pass".to_string(),
-                from: "noreply@example.com".to_string(),
-            },
-            password_reset: PasswordResetConfig {
-                ttl: 3_600,
-                reset_url: "http://localhost/reset-password".to_string(),
-            },
-            s3: S3Config {
-                access_key: "user".to_string(),
-                secret_key: "password".to_string(),
-                endpoint: "http://127.0.0.1:9000".to_string(),
-                region: "us-west-2".to_string(),
-            },
-            workspace_invite: WorkspaceInviteConfig {
-                ttl: 86_400,
-                invite_url: "http://localhost/workspaces/invites/accept".to_string(),
-            },
-        })
-    }
-
-    fn confirmed_user() -> User {
-        let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string());
-        user.is_confirmed = true;
-        user
-    }
-
-    fn unconfirmed_user() -> User {
-        User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string())
-    }
-
-    fn valid_reset_token(user_id: Id<User>) -> PasswordResetToken {
-        PasswordResetToken::new(user_id, "valid-token".to_string(), 3600)
-    }
-
+    // Tests successful login with valid credentials
+    // Verifies:
+    // - Endpoint returns 200 OK status when email and password are correct
+    // - Response includes SET_COOKIE header with session cookie for authentication
+    // - Response contains success message "Login successful"
+    #[rstest]
     #[tokio::test]
-    async fn test_login_handler_sets_cookie_and_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut session_writer = MockSessionWriterMock::new();
-        let mut hasher = MockHasherMock::new();
+    #[serial]
+    async fn test_login_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        user_reader.expect_find_by_email(|_| Ok(Some(confirmed_user())));
-        hasher.expect_verify_password().returning(|_, _| Ok(true));
-        session_writer.expect_insert().returning(|_| Ok(Id::generate()));
-        db_session.expect_commit().returning(|| Ok(()));
+        let (username, email) = unique_credentials();
+        let password = "Password123!";
+        let hashed_password = hash_password(&state, password).await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
 
-        let interactor = LoginInteractor::new(
-            Arc::new(db_session),
-            Arc::new(user_reader),
-            Arc::new(session_writer),
-            Arc::new(hasher),
-        );
-        let payload: LoginRequest = serde_json::from_value(json!({
-            "email": "ex@example.com",
+        let body = serde_json::json!({ "email": email, "password": password, "remember_me": false });
+
+        let request = get_request_login(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let has_cookie = response.headers().get(SET_COOKIE).is_some();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(has_cookie, "SET_COOKIE header expected on successful login");
+        assert_eq!(json["message"], "Login successful");
+    }
+
+    // Tests that login fails with incorrect password
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED status when password is wrong
+    // - No session cookie is set for failed authentication attempts
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_login_invalid_password(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+
+        let body = serde_json::json!({ "email": email, "password": "WrongPassword1!", "remember_me": false });
+
+        let request = get_request_login(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    // Tests that login fails for unconfirmed email accounts
+    // Verifies:
+    // - Endpoint returns 403 FORBIDDEN status when user exists but email is not confirmed
+    // - Prevents authentication for accounts that haven't completed email verification
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_login_unconfirmed_user(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let password = "Password123!";
+        let hashed_password = hash_password(&state, password).await;
+        let user_id = insert_unconfirmed_user(&state.pool, &username, &email, &hashed_password).await;
+
+        let body = serde_json::json!({ "email": email, "password": password, "remember_me": false });
+
+        let request = get_request_login(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    // Tests that login fails for non-existent user accounts
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED status when email is not registered
+    // - Maintains consistent error response to prevent user enumeration
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_login_nonexistent_user(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let body = serde_json::json!({
+            "email": "nobody_exists_xyz@auth.example",
             "password": "Password123!",
-            "remember_me": true
-        }))
-        .expect("valid login payload");
+            "remember_me": false
+        });
 
-        let response = login(interactor, State(test_config()), Json(payload))
-            .await
-            .expect("login should pass")
-            .into_response();
+        let request = get_request_login(body);
 
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(response.headers().get(SET_COOKIE).is_some());
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
+    // === logout ===
+    fn get_request_logout(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests successful logout with valid session
+    // Verifies:
+    // - Endpoint returns 200 OK status when authenticated with valid session cookie
+    // - Response includes SET_COOKIE header with expired session cookie
+    // - Session is properly terminated by clearing the cookie
+    // - Response contains success message "Logged out successfully"
+    #[rstest]
     #[tokio::test]
-    async fn test_logout_handler_sets_expired_cookie_and_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut session_writer = MockSessionWriterMock::new();
-        session_writer.expect_delete_by_user_id().returning(|_| Ok(()));
-        db_session.expect_commit().returning(|| Ok(()));
+    #[serial]
+    async fn test_logout_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        let interactor = LogoutInteractor::new(Arc::new(db_session), Arc::new(session_writer));
-        let auth_user = AuthUser {
-            user_id: Id::<User>::generate().value.to_string(),
-        };
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_unconfirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
 
-        let response = logout(auth_user, interactor, State(test_config()))
-            .await
-            .expect("logout should pass")
-            .into_response();
+        let cookie_name = &state.config.session.cookie_name;
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let cookie = response
+        let request = get_request_logout(session_id, cookie_name);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let cookie_value = response
             .headers()
             .get(SET_COOKIE)
-            .expect("cookie header should be present")
-            .to_str()
-            .expect("cookie should be valid header");
-        assert!(cookie.contains("Max-Age=0"));
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            cookie_value.contains("Max-Age=0"),
+            "logout cookie must expire the session, got: {cookie_value}"
+        );
+        assert_eq!(json["message"], "Logged out successfully");
     }
 
+    // Tests that logout fails when no valid session cookie is provided
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED status for unauthenticated logout attempts
+    // - Prevents session termination without proper authentication
+    #[rstest]
     #[tokio::test]
-    async fn test_confirm_email_handler_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut confirmation_reader = MockEmailConfirmationReaderMock::new();
-        let mut confirmation_writer = MockEmailConfirmationWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut user_writer = MockUserWriterMock::new();
+    #[serial]
+    async fn test_logout_invalid(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        let user = confirmed_user();
-        let user_id = user.id.clone();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/logout")
+            .body(Body::empty())
+            .unwrap();
 
-        confirmation_reader.expect_find_by_token().returning(move |_| {
-            Ok(Some(EmailConfirmation::new(
-                user_id.clone(),
-                "confirmation-token".to_string(),
-                3600,
-            )))
-        });
-        user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
-        confirmation_writer.expect_confirm().returning(|_| Ok(()));
-        user_writer.expect_update().returning(|u| Ok(u.id));
-        db_session.expect_commit().returning(|| Ok(()));
+        let response = app.oneshot(request).await.unwrap();
 
-        let interactor = ConfirmEmailInteractor::new(
-            Arc::new(db_session),
-            Arc::new(confirmation_reader),
-            Arc::new(confirmation_writer),
-            Arc::new(user_reader),
-            Arc::new(user_writer),
-        );
-
-        let response = confirm_email(
-            interactor,
-            Query(ConfirmEmailQuery {
-                token: "confirmation-token".to_string(),
-            }),
-        )
-        .await
-        .expect("confirm email should pass")
-        .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
-    #[tokio::test]
-    async fn test_resend_confirmation_handler_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut confirmation_writer = MockEmailConfirmationWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut email_sender = MockEmailSenderMock::new();
-
-        user_reader.expect_find_by_email(|_| Ok(Some(unconfirmed_user())));
-        confirmation_writer.expect_delete().returning(|_| Ok(()));
-        confirmation_writer.expect_insert().returning(|_| Ok(Id::generate()));
-        db_session.expect_commit().returning(|| Ok(()));
-        email_sender.expect_send().returning(|_, _, _| Ok(()));
-
-        let interactor = ResendConfirmationInteractor::new(
-            Arc::new(db_session),
-            Arc::new(confirmation_writer),
-            Arc::new(user_reader),
-            Arc::new(email_sender),
-        );
-
-        let payload: ResendConfirmationRequest = serde_json::from_value(json!({
-            "email": "ex@example.com"
-        }))
-        .expect("valid resend payload");
-
-        let response = resend_confirmation(interactor, State(test_config()), Json(payload))
-            .await
-            .expect("resend confirmation should pass")
-            .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+    // === confirm_email ===
+    fn get_request_confirm_email(token: String) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/auth/confirm-email?token={}", token))
+            .body(Body::empty())
+            .unwrap()
     }
 
+    // Tests successful email confirmation with valid token
+    // Verifies:
+    // - Endpoint returns 200 OK status when valid confirmation token is provided
+    // - Email confirmation token is properly processed for unconfirmed user
+    #[rstest]
     #[tokio::test]
-    async fn test_forgot_password_handler_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut token_writer = MockPasswordResetTokenWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut email_sender = MockEmailSenderMock::new();
+    #[serial]
+    async fn test_confirm_email_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        user_reader.expect_find_by_email(|_| Ok(Some(confirmed_user())));
-        token_writer.expect_delete().returning(|_| Ok(()));
-        token_writer.expect_insert().returning(|t| Ok(t.id));
-        email_sender.expect_send().times(0..=1).returning(|_, _, _| Ok(()));
-        db_session.expect_commit().returning(|| Ok(()));
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_unconfirmed_user(&state.pool, &username, &email, &hashed).await;
+        let token = format!("confirm-{}", Uuid::now_v7().as_simple());
+        insert_email_confirmation(&state.pool, user_id, &token).await;
 
-        let interactor = RequestPasswordResetInteractor::new(
-            Arc::new(db_session),
-            Arc::new(token_writer),
-            Arc::new(user_reader),
-            Arc::new(email_sender),
-        );
+        let request = get_request_confirm_email(token);
 
-        let payload: ForgotPasswordResetRequest = serde_json::from_value(json!({
-            "email": "ex@example.com"
-        }))
-        .expect("valid forgot password payload");
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
 
-        let response = forgot_password(interactor, State(test_config()), Json(payload))
-            .await
-            .expect("forgot_password should pass")
-            .into_response();
+        delete_user(&state.pool, user_id).await;
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(status, StatusCode::OK);
     }
 
+    // Tests that email confirmation fails with invalid token
+    // Verifies:
+    // - Endpoint returns 400 BAD_REQUEST status when confirmation token is malformed or doesn't exist
+    // - Prevents email confirmation with invalid or tampered tokens
+    #[rstest]
     #[tokio::test]
-    async fn test_forgot_password_handler_user_not_found_still_returns_ok() {
-        let db_session = MockDBSessionMock::new();
-        let token_writer = MockPasswordResetTokenWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let email_sender = MockEmailSenderMock::new();
+    #[serial]
+    async fn test_confirm_email_invalid_token(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        user_reader.expect_find_by_email(|_| Ok(None));
+        let request = get_request_confirm_email("invalid".to_string());
 
-        let interactor = RequestPasswordResetInteractor::new(
-            Arc::new(db_session),
-            Arc::new(token_writer),
-            Arc::new(user_reader),
-            Arc::new(email_sender),
-        );
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
 
-        let payload: ForgotPasswordResetRequest = serde_json::from_value(json!({
-            "email": "nonexistent@example.com"
-        }))
-        .expect("valid forgot password payload");
-
-        let response = forgot_password(interactor, State(test_config()), Json(payload))
-            .await
-            .expect("forgot_password should pass even for unknown email")
-            .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
-    #[tokio::test]
-    async fn test_reset_password_handler_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut token_reader = MockPasswordResetTokenReaderMock::new();
-        let mut token_writer = MockPasswordResetTokenWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut user_writer = MockUserWriterMock::new();
-        let mut hasher = MockHasherMock::new();
-
-        let user = confirmed_user();
-        let user_id = user.id.clone();
-
-        token_reader
-            .expect_find_by_token()
-            .returning(move |_| Ok(Some(valid_reset_token(user_id.clone()))));
-        user_reader.expect_find_by_id(move |_| Ok(Some(user.clone())));
-        hasher
-            .expect_hash_password()
-            .returning(|_| Ok("new_hashed_password".to_string()));
-        token_writer.expect_mark_as_used().returning(|_| Ok(()));
-        user_writer.expect_update().returning(|u| Ok(u.id));
-        db_session.expect_commit().returning(|| Ok(()));
-
-        let interactor = ResetPasswordInteractor::new(
-            Arc::new(db_session),
-            Arc::new(token_reader),
-            Arc::new(token_writer),
-            Arc::new(user_reader),
-            Arc::new(user_writer),
-            Arc::new(hasher),
-        );
-
-        let payload: ResetPasswordRequest = serde_json::from_value(json!({
-            "token": "valid-token",
-            "password": "NewPassword123!"
-        }))
-        .expect("valid reset password payload");
-
-        let response = reset_password(interactor, ValidJson(payload))
-            .await
-            .expect("reset_password should pass")
-            .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+    // === resend_confirmation ===
+    fn get_request_resend_confirmation(body: Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/auth/resend-confirmation")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
     }
 
+    // Tests successful resend of confirmation email for unconfirmed user
+    // Verifies:
+    // - Endpoint returns 200 OK status when requesting resend for existing unconfirmed email
+    // - New confirmation token is generated and sent for unconfirmed account
+    #[rstest]
     #[tokio::test]
-    async fn test_reset_password_handler_invalid_token_returns_400() {
-        let db_session = MockDBSessionMock::new();
-        let mut token_reader = MockPasswordResetTokenReaderMock::new();
-        let token_writer = MockPasswordResetTokenWriterMock::new();
-        let user_reader = MockUserReader::new();
-        let user_writer = MockUserWriterMock::new();
-        let hasher = MockHasherMock::new();
+    #[serial]
+    async fn test_resend_confirmation_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        token_reader.expect_find_by_token().returning(|_| Ok(None));
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_unconfirmed_user(&state.pool, &username, &email, &hashed).await;
 
-        let interactor = ResetPasswordInteractor::new(
-            Arc::new(db_session),
-            Arc::new(token_reader),
-            Arc::new(token_writer),
-            Arc::new(user_reader),
-            Arc::new(user_writer),
-            Arc::new(hasher),
-        );
+        let body = serde_json::json!({ "email": email });
 
-        let payload: ResetPasswordRequest = serde_json::from_value(json!({
-            "token": "invalid-token",
-            "password": "NewPassword123!"
-        }))
-        .expect("valid reset password payload");
+        let request = get_request_resend_confirmation(body);
 
-        let result = reset_password(interactor, ValidJson(payload)).await;
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
 
-        let response = match result {
-            Err(err) => err.into_response(),
-            Ok(_) => panic!("expected error response for invalid token"),
-        };
+        delete_user(&state.pool, user_id).await;
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // Tests that resend confirmation fails for already confirmed accounts
+    // Verifies:
+    // - Endpoint returns 409 CONFLICT status when requesting resend for already confirmed email
+    // - Prevents sending confirmation emails to already active accounts
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_resend_confirmation_already_confirmed(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+
+        let body = serde_json::json!({ "email": email });
+
+        let request = get_request_resend_confirmation(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    // === forgot_password ===
+    fn get_request_forgot_password(body: Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/auth/forgot-password")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    // Tests successful password reset request for confirmed user
+    // Verifies:
+    // - Endpoint returns 200 OK status when requesting password reset for existing confirmed email
+    // - Password reset token is generated and sent to the user's email
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_forgot_password_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+
+        let body = serde_json::json!({ "email": email });
+
+        let request = get_request_forgot_password(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // Tests that forgot password returns OK even for non-existent users (security measure)
+    // Verifies:
+    // - Endpoint returns 200 OK status even when email is not registered
+    // - Prevents user enumeration by maintaining consistent response regardless of email existence
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_forgot_password_nonexistent_user_still(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let body = serde_json::json!({ "email": "ex@ex.example" });
+
+        let request = get_request_forgot_password(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // === reset_password ===
+    fn get_request_reset_password(body: Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/auth/reset-password")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    // Tests successful password reset with valid token
+    // Verifies:
+    // - Endpoint returns 200 OK status when valid reset token and new password are provided
+    // - Password is successfully updated for the user associated with the reset token
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_password_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let token = format!("reset-{}", Uuid::now_v7().as_simple());
+        insert_password_reset_token(&state.pool, user_id, &token).await;
+
+        let body = serde_json::json!({ "token": token, "password": "NewPassword123!" });
+
+        let request = get_request_reset_password(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // Tests that password reset fails with invalid token
+    // Verifies:
+    // - Endpoint returns 400 BAD_REQUEST status when reset token is invalid or doesn't exist
+    // - Prevents password reset with invalid, expired, or tampered tokens
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_reset_password_invalid_token(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let body = serde_json::json!({ "token": "invalid", "password": "NewPassword123!" });
+
+        let request = get_request_reset_password(body);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }

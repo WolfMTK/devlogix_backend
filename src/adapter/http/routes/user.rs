@@ -229,10 +229,8 @@ pub async fn update_user(
 
 #[cfg(test)]
 mod tests {
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use rstest::rstest;
     use serde_json::Value;
@@ -240,15 +238,12 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    use crate::{
-        infra::{app::create_app, state::AppState},
-        tests::{
-            fixtures::init_test_app_state,
-            helpers::{
-                delete_user, find_user_by_email, hash_password, insert_confirmed_user, insert_session, session_cookie,
-                unique_credentials,
-            },
-        },
+    use crate::infra::app::create_app;
+    use crate::infra::state::AppState;
+    use crate::tests::fixtures::init_test_app_state;
+    use crate::tests::helpers::{
+        delete_user, find_user_by_email, hash_password, insert_confirmed_user, insert_session, session_cookie,
+        unique_credentials,
     };
 
     // === register ===
