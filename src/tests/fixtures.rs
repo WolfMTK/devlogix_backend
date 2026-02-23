@@ -46,7 +46,7 @@ pub fn test_config() -> AppConfig {
             confirmation_url: "http://localhost/confirm".to_string(),
         },
         email: EmailConfig {
-            provider: "local".to_string(), // Принудительно local для тестов
+            provider: "local".to_string(),
             local_output_dir: "./tmp/test-integration-emails".to_string(),
         },
         smtp: SMTPConfig {
@@ -64,10 +64,10 @@ pub fn test_config() -> AppConfig {
             reset_url: "http://localhost/reset-password".to_string(),
         },
         s3: S3Config {
-            access_key: std::env::var("TEST_S3_ACCESS_KEY").unwrap_or_else(|_| "minioadmin".to_string()),
-            secret_key: std::env::var("TEST_S3_SECRET_KEY").unwrap_or_else(|_| "minioadmin123".to_string()),
+            access_key: std::env::var("TEST_S3_ACCESS_KEY").unwrap_or_else(|_| "admin".to_string()),
+            secret_key: std::env::var("TEST_S3_SECRET_KEY").unwrap_or_else(|_| "password".to_string()),
             endpoint: std::env::var("TEST_S3_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9000".to_string()),
-            region: std::env::var("TEST_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()), // Исправлена опечатка TSET -> TEST
+            region: std::env::var("TEST_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
         },
         workspace_invite: WorkspaceInviteConfig {
             ttl: 86_400,
