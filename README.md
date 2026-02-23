@@ -84,9 +84,7 @@ cargo build --release
 
 Environment Variables for Testing
 
-```
-bash
-
+```bash
 # DATABASE
 export TEST_DATABASE_URL="postgres://postgres:password@localhost:5432/test"
 
