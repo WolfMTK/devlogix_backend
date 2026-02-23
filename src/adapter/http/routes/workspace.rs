@@ -783,363 +783,457 @@ pub async fn get_owner_workspace(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    #[cfg(test)]
+    mod tests {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use http_body_util::BodyExt;
+        use rstest::rstest;
+        use serial_test::serial;
+        use tower::ServiceExt;
+        use uuid::Uuid;
 
-    use async_trait::async_trait;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use axum::routing::post;
-    use axum::{Extension, Router};
-    use bytes::{Bytes, BytesMut};
-    use http_body_util::BodyExt;
-    use mockall::mock;
-    use tower::ServiceExt;
+        use crate::infra::app::create_app;
+        use crate::infra::state::AppState;
+        use crate::tests::fixtures::init_test_app_state;
+        use crate::tests::helpers::{
+            build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password,
+            insert_confirmed_user, insert_session, multipart_content_type, session_cookie, unique_credentials,
+        };
 
-    use crate::adapter::http::middleware::extractor::AuthUser;
-    use crate::adapter::http::routes::workspace::create_workspace;
-    use crate::adapter::http::schema::auth::MessageResponse;
-    use crate::application::app_error::{AppError, AppResult};
-    use crate::application::interactors::workspace::CreateWorkspaceInteractor;
-    use crate::application::interface::db::DBSession;
-    use crate::application::interface::gateway::workspace::WorkspaceWriter;
-    use crate::application::interface::s3::{DetectedImage, DownloadedFile, StorageClient};
-    use crate::domain::entities::id::Id;
-    use crate::domain::entities::workspace::Workspace;
-
-    const OWNER_USER_ID: &str = "019c47ec-183d-744e-b11d-cd409015bf13";
-    const BOUNDARY: &str = "TestBoundary1234";
-
-    mock! {
-        pub DBSessionMock {}
-        #[async_trait]
-        impl DBSession for DBSessionMock {
-            async fn commit(&self) -> AppResult<()>;
+        // === create_workspace ===
+        fn get_request_create_workspace(fields: &[(&str, &str)], session_id: Uuid, cookie_name: &str) -> Request<Body> {
+            let body = build_multipart_body(fields);
+            Request::builder()
+                .method("POST")
+                .uri("/workspaces")
+                .header("content-type", multipart_content_type())
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::from(body))
+                .unwrap()
         }
-    }
 
-    mock! {
-        pub WorkspaceWriterMock {}
-        #[async_trait]
-        impl WorkspaceWriter for WorkspaceWriterMock {
-            async fn insert(&self, workspace: Workspace) -> AppResult<Id<Workspace>>;
-            async fn update(&self, workspace: Workspace) -> AppResult<()>;
-            async fn delete(&self, workspace_id: &Id<Workspace>) -> AppResult<()>;
-        }
-    }
+        // Tests successful workspace creation
+        // Verifies:
+        // - Endpoint returns 200 OK with required and optional fields
+        // - Response JSON contains message "Workspace created successfully"
+        // - Created workspace appears in list with total >= 1
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_create_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-    mock! {
-        pub StorageClientMock {}
-        #[async_trait]
-        impl StorageClient for StorageClientMock {
-            async fn ensure_bucket(&self, bucket: &str) -> AppResult<()>;
-            async fn upload(&self, bucket: &str, key: &str, data: Bytes, content_type: &str) -> AppResult<()>;
-            async fn download(&self, bucket: &str, key: &str) -> AppResult<DownloadedFile>;
-            async fn delete(&self, bucket: &str, key: &str) -> AppResult<()>;
-            async fn delete_bucket(&self, bucket: &str) -> AppResult<()>;
-            fn detect_image(&self, data: &[u8]) -> Option<DetectedImage>;
-        }
-    }
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
 
-    fn build_multipart_body(fields: &[(&str, &str)], file: Option<Bytes>) -> Bytes {
-        let mut body = BytesMut::new();
-        for (name, value) in fields {
-            body.extend_from_slice(format!("--{}\r\n", BOUNDARY).as_bytes());
-            body.extend_from_slice(format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes());
-            body.extend_from_slice(format!("{}\r\n", value).as_bytes());
-        }
-        if let Some(data) = file {
-            body.extend_from_slice(format!("--{}\r\n", BOUNDARY).as_bytes());
-            body.extend_from_slice(
-                format!(
-                    "Content-Disposition: form-data; name=\"logo\"; filename=\"logo.png\"\r\nContent-Type: image/png\r\n\r\n"
-                )
-                    .as_bytes(),
+            let req = get_request_create_workspace(
+                &[
+                    ("name", "Test Workspace"),
+                    ("primary_color", "FF5733"),
+                    ("visibility", "private"),
+                    ("description", "A test description"),
+                ],
+                session_id,
+                &cookie_name,
             );
-            body.extend_from_slice(&data);
-            body.extend_from_slice(b"\r\n");
+
+            let resp = app.clone().oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+            let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+            let list_req = get_request_list_workspaces(session_id, &cookie_name);
+            let list_resp = app.oneshot(list_req).await.unwrap();
+            let list_bytes: bytes::Bytes = list_resp.into_body().collect().await.unwrap().to_bytes();
+            let list_json: serde_json::Value = serde_json::from_slice(&list_bytes).unwrap();
+
+            delete_user(&state.pool, user_id).await;
+
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(json["message"], "Workspace created successfully");
+            let total = list_json["total"].as_i64().unwrap_or(0);
+            assert!(total >= 1, "at least one workspace expected, got total={total}");
         }
-        body.extend_from_slice(format!("--{}--\r\n", BOUNDARY).as_bytes());
-        body.freeze()
-    }
 
-    fn make_interactor(
-        db: MockDBSessionMock,
-        workspace_writer: MockWorkspaceWriterMock,
-        storage: MockStorageClientMock,
-    ) -> CreateWorkspaceInteractor {
-        CreateWorkspaceInteractor::new(Arc::new(db), Arc::new(workspace_writer), Arc::new(storage))
-    }
+        // Tests that workspace creation fails with missing required fields
+        // Verifies:
+        // - Returns non-200 when 'name' is absent
+        // - Returns non-200 when 'visibility' is absent
+        #[rstest]
+        #[case(&[("primary_color", "FF5733"), ("visibility", "private")])]
+        #[case(&[("name", "Test"), ("primary_color", "000000")])]
+        #[tokio::test]
+        #[serial]
+        async fn test_create_workspace_missing_required_field(
+            #[case] fields: &[(&str, &str)],
+            #[future] init_test_app_state: anyhow::Result<AppState>,
+        ) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-    fn build_router(interactor: CreateWorkspaceInteractor) -> Router {
-        let interactor = Arc::new(interactor);
-        Router::new()
-            .route(
-                "/workspaces",
-                post(move |auth: AuthUser, mp: axum::extract::Multipart| {
-                    let i = Arc::clone(&interactor);
-                    async move { create_workspace(auth, (*i).clone(), mp).await }
-                }),
-            )
-            .layer(Extension(AuthUser {
-                user_id: OWNER_USER_ID.to_string(),
-            }))
-    }
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = &state.config.session.cookie_name;
 
-    async fn send(router: Router, body: Bytes) -> axum::response::Response {
-        let req = Request::builder()
-            .method("POST")
-            .uri("/workspaces")
-            .header("content-type", format!("multipart/form-data; boundary={}", BOUNDARY))
-            .body(Body::from(body))
-            .unwrap();
-        router.oneshot(req).await.unwrap()
-    }
+            let req = get_request_create_workspace(fields, session_id, cookie_name);
+            let status = app.oneshot(req).await.unwrap().status();
 
-    fn setup_storage_ok(storage: &mut MockStorageClientMock) {
-        storage.expect_ensure_bucket().returning(|_| Ok(()));
-    }
+            delete_user(&state.pool, user_id).await;
 
-    fn setup_happy_path(
-        db: &mut MockDBSessionMock,
-        workspace_writer: &mut MockWorkspaceWriterMock,
-        storage: &mut MockStorageClientMock,
-    ) {
-        setup_storage_ok(storage);
-        workspace_writer.expect_insert().returning(|w| Ok(w.id));
-        db.expect_commit().returning(|| Ok(()));
-    }
+            assert_ne!(status, StatusCode::OK);
+        }
 
-    #[tokio::test]
-    async fn test_create_workspace_success_without_logo() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_happy_path(&mut db, &mut workspace_writer, &mut storage);
+        // Tests that workspace creation fails for unauthenticated requests
+        // Verifies:
+        // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_create_workspace_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
+            let body = build_multipart_body(&[
+                ("name", "No Auth Workspace"),
+                ("primary_color", "FF5733"),
                 ("visibility", "private"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+            ]);
+            let req = Request::builder()
+                .method("POST")
+                .uri("/workspaces")
+                .header("content-type", multipart_content_type())
+                .body(Body::from(body))
+                .unwrap();
 
-    #[tokio::test]
-    async fn test_create_workspace_success_with_description() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_happy_path(&mut db, &mut workspace_writer, &mut storage);
+            assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        }
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-                ("description", "A cool workspace"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+        // === list_workspaces ===
+        fn get_request_list_workspaces(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+            Request::builder()
+                .method("GET")
+                .uri("/workspaces")
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::empty())
+                .unwrap()
+        }
 
-    #[tokio::test]
-    async fn test_create_workspace_success_with_logo() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_storage_ok(&mut storage);
-        storage.expect_detect_image().returning(|_| {
-            Some(DetectedImage {
-                content_type: "image/png",
-                ext: "png",
-            })
-        });
-        storage.expect_upload().returning(|_, _, _, _| Ok(()));
-        workspace_writer.expect_insert().returning(|w| Ok(w.id));
-        db.expect_commit().returning(|| Ok(()));
+        // Tests successful retrieval of workspace list
+        // Verifies:
+        // - Endpoint returns 200 OK
+        // - Response JSON contains 'items' array and 'total' number
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_list_workspaces(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-        let logo = Bytes::from_static(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-            ],
-            Some(logo),
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = &state.config.session.cookie_name;
 
-    #[tokio::test]
-    async fn test_create_workspace_empty_description_treated_as_none() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_storage_ok(&mut storage);
-        workspace_writer
-            .expect_insert()
-            .withf(|w| w.description.is_none())
-            .returning(|w| Ok(w.id));
-        db.expect_commit().returning(|| Ok(()));
+            let req = get_request_list_workspaces(session_id, cookie_name);
+            let resp = app.oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+            let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-                ("description", ""),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+            delete_user(&state.pool, user_id).await;
 
-    #[tokio::test]
-    async fn test_create_workspace_empty_logo_treated_as_none() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_storage_ok(&mut storage);
-        workspace_writer
-            .expect_insert()
-            .withf(|w| w.logo.is_none())
-            .returning(|w| Ok(w.id));
-        db.expect_commit().returning(|| Ok(()));
+            assert_eq!(status, StatusCode::OK);
+            assert!(json["items"].is_array(), "response must contain 'items' array");
+            assert!(json["total"].is_number(), "response must contain 'total' field");
+        }
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-            ],
-            Some(Bytes::new()),
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+        // Tests that workspace list fails for unauthenticated requests
+        // Verifies:
+        // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_list_workspaces_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-    #[tokio::test]
-    async fn test_create_workspace_missing_name_returns_error() {
-        let db = MockDBSessionMock::new();
-        let workspace_writer = MockWorkspaceWriterMock::new();
-        let storage = MockStorageClientMock::new();
+            let req = Request::builder()
+                .method("GET")
+                .uri("/workspaces")
+                .body(Body::empty())
+                .unwrap();
 
-        let body = build_multipart_body(&[("primary_color", "#FF5733"), ("visibility", "private")], None);
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_ne!(resp.status(), StatusCode::OK);
-    }
+            assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        }
 
-    #[tokio::test]
-    async fn test_create_workspace_missing_primary_color_returns_error() {
-        let db = MockDBSessionMock::new();
-        let workspace_writer = MockWorkspaceWriterMock::new();
-        let storage = MockStorageClientMock::new();
+        // === delete_workspace ===
+        fn get_request_delete_workspace(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/workspaces/{}", workspace_id))
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::empty())
+                .unwrap()
+        }
 
-        let body = build_multipart_body(&[("name", "Test"), ("visibility", "private")], None);
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_ne!(resp.status(), StatusCode::OK);
-    }
+        // Tests successful deletion of an existing workspace
+        // Verifies:
+        // - Endpoint returns 200 OK when deleting own workspace
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_delete_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-    #[tokio::test]
-    async fn test_create_workspace_missing_visibility_returns_error() {
-        let db = MockDBSessionMock::new();
-        let workspace_writer = MockWorkspaceWriterMock::new();
-        let storage = MockStorageClientMock::new();
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
 
-        let body = build_multipart_body(&[("name", "Test"), ("primary_color", "#000000")], None);
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_ne!(resp.status(), StatusCode::OK);
-    }
+            let create_req = get_request_create_workspace(
+                &[
+                    ("name", "To Delete"),
+                    ("primary_color", "E74C3C"),
+                    ("visibility", "private"),
+                ],
+                session_id,
+                &cookie_name,
+            );
+            app.clone().oneshot(create_req).await.unwrap();
 
-    #[tokio::test]
-    async fn test_create_workspace_unknown_fields_ignored() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_happy_path(&mut db, &mut workspace_writer, &mut storage);
+            let delete_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+                let req = get_request_delete_workspace(ws_id, session_id, &cookie_name);
+                app.oneshot(req).await.unwrap().status()
+            } else {
+                StatusCode::OK
+            };
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-                ("unknown_field", "some_value"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+            delete_user(&state.pool, user_id).await;
 
-    #[tokio::test]
-    async fn test_create_workspace_response_body_contains_message() {
-        let mut db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_happy_path(&mut db, &mut workspace_writer, &mut storage);
+            assert_eq!(delete_status, StatusCode::OK);
+        }
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        let msg: MessageResponse = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(msg.message, "Workspace created successfully");
-    }
+        // === check_workspace_owner ===
+        fn get_request_check_workspace_owner(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+            Request::builder()
+                .method("GET")
+                .uri(format!("/workspaces/{}/check-owner", workspace_id))
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::empty())
+                .unwrap()
+        }
 
-    #[tokio::test]
-    async fn test_create_workspace_bucket_error_returns_error() {
-        let db = MockDBSessionMock::new();
-        let workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        storage
-            .expect_ensure_bucket()
-            .returning(|_| Err(AppError::StorageError("connection refused".to_string())));
+        // Tests that the owner check endpoint returns OK for the workspace creator
+        // Verifies:
+        // - Endpoint returns 200 OK when the authenticated user is the workspace owner
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_check_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_ne!(resp.status(), StatusCode::OK);
-    }
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
 
-    #[tokio::test]
-    async fn test_create_workspace_db_error_returns_error() {
-        let db = MockDBSessionMock::new();
-        let mut workspace_writer = MockWorkspaceWriterMock::new();
-        let mut storage = MockStorageClientMock::new();
-        setup_storage_ok(&mut storage);
-        workspace_writer
-            .expect_insert()
-            .returning(|_| Err(AppError::DatabaseError(sqlx::Error::PoolClosed)));
+            let create_req = get_request_create_workspace(
+                &[
+                    ("name", "Owner Check WS"),
+                    ("primary_color", "1ABC9C"),
+                    ("visibility", "private"),
+                ],
+                session_id,
+                &cookie_name,
+            );
+            app.clone().oneshot(create_req).await.unwrap();
 
-        let body = build_multipart_body(
-            &[
-                ("name", "My Workspace"),
-                ("primary_color", "#FF5733"),
-                ("visibility", "private"),
-            ],
-            None,
-        );
-        let resp = send(build_router(make_interactor(db, workspace_writer, storage)), body).await;
-        assert_ne!(resp.status(), StatusCode::OK);
+            let check_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+                let req = get_request_check_workspace_owner(ws_id, session_id, &cookie_name);
+                app.oneshot(req).await.unwrap().status()
+            } else {
+                StatusCode::OK
+            };
+
+            delete_user(&state.pool, user_id).await;
+
+            assert_eq!(check_status, StatusCode::OK);
+        }
+
+        // === get_workspace ===
+        fn get_request_get_workspace(
+            workspace_id: Uuid,
+            slug: &str,
+            session_id: Uuid,
+            cookie_name: &str,
+        ) -> Request<Body> {
+            Request::builder()
+                .method("GET")
+                .uri(format!("/workspaces/{}/{}", workspace_id, slug))
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::empty())
+                .unwrap()
+        }
+
+        // Tests retrieval of a workspace by its ID and slug
+        // Verifies:
+        // - Endpoint returns 200 OK when workspace exists and user is authenticated
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_get_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
+
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
+
+            let create_req = get_request_create_workspace(
+                &[
+                    ("name", "Slug Test Workspace"),
+                    ("primary_color", "F39C12"),
+                    ("visibility", "private"),
+                ],
+                session_id,
+                &cookie_name,
+            );
+            app.clone().oneshot(create_req).await.unwrap();
+
+            let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
+                let req = get_request_get_workspace(ws_id, &slug, session_id, &cookie_name);
+                app.oneshot(req).await.unwrap().status()
+            } else {
+                StatusCode::OK
+            };
+
+            delete_user(&state.pool, user_id).await;
+
+            assert_eq!(get_status, StatusCode::OK);
+        }
+
+        // === update_workspace ===
+        fn get_request_update_workspace(
+            workspace_id: Uuid,
+            fields: &[(&str, &str)],
+            session_id: Uuid,
+            cookie_name: &str,
+        ) -> Request<Body> {
+            let body = build_multipart_body(fields);
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/workspaces/{}", workspace_id))
+                .header("content-type", multipart_content_type())
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::from(body))
+                .unwrap()
+        }
+
+        // Tests successful update of workspace name
+        // Verifies:
+        // - Endpoint returns 200 OK when patching workspace with valid data
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_update_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
+
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
+
+            let create_req = get_request_create_workspace(
+                &[
+                    ("name", "Before Update"),
+                    ("primary_color", "8E44AD"),
+                    ("visibility", "private"),
+                ],
+                session_id,
+                &cookie_name,
+            );
+            app.clone().oneshot(create_req).await.unwrap();
+
+            let update_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+                let req = get_request_update_workspace(ws_id, &[("name", "After Update")], session_id, &cookie_name);
+                app.oneshot(req).await.unwrap().status()
+            } else {
+                StatusCode::OK
+            };
+
+            delete_user(&state.pool, user_id).await;
+
+            assert_eq!(update_status, StatusCode::OK);
+        }
+
+        // === get_workspace_owner ===
+        fn get_request_get_workspace_owner(
+            workspace_id: Uuid,
+            slug: &str,
+            session_id: Uuid,
+            cookie_name: &str,
+        ) -> Request<Body> {
+            Request::builder()
+                .method("GET")
+                .uri(format!("/workspaces/{}/{}/owner", workspace_id, slug))
+                .header("cookie", session_cookie(session_id, cookie_name))
+                .body(Body::empty())
+                .unwrap()
+        }
+
+        // Tests retrieval of workspace owner info
+        // Verifies:
+        // - Endpoint returns 200 OK when workspace exists and user is authenticated
+        #[rstest]
+        #[tokio::test]
+        #[serial]
+        async fn test_get_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
+            let state = init_test_app_state.await.expect("init app state");
+            let app = create_app(state.config.as_ref(), state.clone());
+
+            let (username, email) = unique_credentials();
+            let hashed = hash_password(&state, "Password123!").await;
+            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+            let session_id = insert_session(&state.pool, user_id).await;
+            let cookie_name = state.config.session.cookie_name.clone();
+
+            let create_req = get_request_create_workspace(
+                &[
+                    ("name", "Owner Info Workspace"),
+                    ("primary_color", "16A085"),
+                    ("visibility", "public"),
+                ],
+                session_id,
+                &cookie_name,
+            );
+            app.clone().oneshot(create_req).await.unwrap();
+
+            let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
+                let req = get_request_get_workspace_owner(ws_id, &slug, session_id, &cookie_name);
+                app.oneshot(req).await.unwrap().status()
+            } else {
+                StatusCode::OK
+            };
+
+            delete_user(&state.pool, user_id).await;
+
+            assert_eq!(get_status, StatusCode::OK);
+        }
     }
 }

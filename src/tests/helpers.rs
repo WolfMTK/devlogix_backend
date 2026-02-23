@@ -1,10 +1,13 @@
 #![cfg(test)]
 
+use bytes::{Bytes, BytesMut};
 use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::infra::state::AppState;
+
+const BOUNDARY: &str = "TestBoundary";
 
 pub fn unique_credentials() -> (String, String) {
     let id = Uuid::now_v7().as_simple().to_string();
@@ -88,4 +91,37 @@ pub async fn insert_password_reset_token(pool: &PgPool, user_id: Uuid, token: &s
         .execute(pool)
         .await
         .expect("insert password reset token");
+}
+
+pub fn build_multipart_body(fields: &[(&str, &str)]) -> Bytes {
+    let mut body = BytesMut::new();
+    for (name, value) in fields {
+        body.extend_from_slice(format!("--{}\r\n", BOUNDARY).as_bytes());
+        body.extend_from_slice(format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes());
+        body.extend_from_slice(format!("{}\r\n", value).as_bytes());
+    }
+    body.extend_from_slice(format!("--{}--\r\n", BOUNDARY).as_bytes());
+    body.freeze()
+}
+
+pub fn multipart_content_type() -> String {
+    format!("multipart/form-data; boundary={}", BOUNDARY)
+}
+
+pub async fn find_workspace_id(pool: &PgPool, owner_user_id: Uuid) -> Option<Uuid> {
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM workspaces WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT 1")
+        .bind(owner_user_id)
+        .fetch_optional(pool)
+        .await
+        .expect("find workspace id")
+}
+
+pub async fn find_workspace_id_and_slug(pool: &PgPool, owner_user_id: Uuid) -> Option<(Uuid, String)> {
+    sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, slug FROM workspaces WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(owner_user_id)
+    .fetch_optional(pool)
+    .await
+    .expect("find workspace id and slug")
 }
