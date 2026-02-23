@@ -63,8 +63,8 @@ pub fn user_router(state: AppState) -> Router<AppState> {
     let public_routes = Router::new().route("/register", post(register));
 
     let protected_routes = Router::new()
-        .route("/me", get(get_me))
         .route("/", patch(update_user))
+        .route("/me", get(get_me))
         .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

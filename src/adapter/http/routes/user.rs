@@ -488,4 +488,131 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+
+    // === update_user ===
+    fn get_request_update_user(body: &Value, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("PATCH")
+            .uri("/users")
+            .header("content-type", "application/json")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    // Tests successful username update
+    // Verifies:
+    // - Endpoint returns 200 OK when updating username with valid data
+    // - Response contains success message "success"
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_username(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let body = serde_json::json!({ "username": "new_username_ok" });
+        let request = get_request_update_user(&body, session_id, cookie_name);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes: bytes::Bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["message"], "success");
+    }
+
+    // Tests successful password update
+    // Verifies:
+    // - Endpoint returns 200 OK when updating password with valid old and new passwords
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_password(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let old_password = "Password123!";
+        let hashed_password = hash_password(&state, old_password).await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let body = serde_json::json!({
+            "old_password": old_password,
+            "password1": "NewPassword123!",
+            "password2": "NewPassword123!"
+        });
+        let request = get_request_update_user(&body, session_id, cookie_name);
+        let status = app.oneshot(request).await.unwrap().status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // Tests that update fails with invalid data
+    // Verifies:
+    // - Returns 400 when username is too short
+    // - Returns 400 when passwords don't match
+    // - Returns 400 when new password is provided without old_password
+    // - Returns 400 when new password fails validation rules
+    #[rstest]
+    #[case(serde_json::json!({ "username": "ab" }))]
+    #[case(serde_json::json!({ "old_password": "Password123!", "password1": "NewPassword123!", "password2": "OtherPassword123!" }))]
+    #[case(serde_json::json!({ "password1": "NewPassword123!", "password2": "NewPassword123!" }))]
+    #[case(serde_json::json!({ "old_password": "Password123!", "password1": "weak", "password2": "weak" }))]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_invalid_data(
+        #[case] body: Value,
+        #[future] init_test_app_state: anyhow::Result<AppState>,
+    ) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let request = get_request_update_user(&body, session_id, cookie_name);
+        let status = app.oneshot(request).await.unwrap().status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    // Tests that update fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let body = serde_json::json!({ "username": "new_username_ok" });
+        let request = Request::builder()
+            .method("PATCH")
+            .uri("/users")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+
+        assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
 }
