@@ -1,19 +1,20 @@
-use axum::Json;
 use axum::response::Html;
-use utoipa::openapi::OpenApi as OpenApiDoc;
+use axum::Json;
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::{Modify, OpenApi};
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
-use crate::adapter::http::routes::{auth, user, workspace};
-use crate::adapter::http::schema::ValidPassword;
+use crate::adapter::http::routes::{auth, project, user, workspace};
 use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
 use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
+use crate::adapter::http::schema::project::CreateProjectRequest;
 use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
 use crate::adapter::http::schema::workspace::{
     CreateWorkspaceRequest, GetWorkspaceResponse, InviteWorkspaceMemberRequest, WorkspaceListResponse,
 };
+use crate::adapter::http::schema::ValidPassword;
 
 struct SecurityAddon;
 
@@ -50,7 +51,8 @@ impl Modify for SecurityAddon {
         workspace::check_workspace_owner,
         workspace::invite_workspace_member,
         workspace::accept_workspace_invite,
-        workspace::get_workspace_logo
+        workspace::get_workspace_logo,
+        project::create_project
     ),
     components(
         schemas(
@@ -68,7 +70,8 @@ impl Modify for SecurityAddon {
             CreateWorkspaceRequest,
             GetWorkspaceResponse,
             WorkspaceListResponse,
-            InviteWorkspaceMemberRequest
+            InviteWorkspaceMemberRequest,
+            CreateProjectRequest
         )
     )
 )]
