@@ -13,8 +13,8 @@ use crate::application::interface::gateway::workspace::{
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{
-    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceView,
-    WorkspaceVisibility,
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceUserRole,
+    WorkspaceView, WorkspaceVisibility,
 };
 
 #[derive(Clone)]
@@ -49,11 +49,16 @@ impl WorkspaceGateway {
 
     fn get_workspace_view(row: &PgRow) -> AppResult<WorkspaceView> {
         let workspace = Self::get_workspace(&row)?;
+        let role_str: String = row.try_get("user_role")?;
+        let role = role_str
+            .parse::<WorkspaceUserRole>()
+            .map_err(|_| AppError::InvalidWorkspaceUserRole)?;
 
         Ok(WorkspaceView {
             workspace,
             total_members: row.try_get("total_members")?,
             total_projects: row.try_get("total_projects")?,
+            user_role: role,
         })
     }
 }
@@ -177,10 +182,11 @@ impl WorkspaceWriter for WorkspaceGateway {
 
 #[async_trait]
 impl WorkspaceReader for WorkspaceGateway {
-    async fn get(&self, workspace_id: &Id<Workspace>) -> AppResult<Option<WorkspaceView>> {
+    async fn get(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<Option<WorkspaceView>> {
         self.session
             .with_tx(|tx| {
                 let workspace_id = workspace_id.value;
+                let user_id = user_id.value;
                 async move {
                     let row = sqlx::query(
                         r#"
@@ -207,12 +213,19 @@ impl WorkspaceReader for WorkspaceGateway {
                                 ) AS total_members,
                                 (
                                     SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
-                                ) AS total_projects
+                                ) AS total_projects,
+                                CASE
+                                    WHEN w.owner_user_id = $2 THEN 'owner'
+                                    WHEN wm.role = 'admin'::workspace_members_role THEN 'admin'
+                                    ELSE 'member'
+                                END AS user_role
                             FROM workspaces AS w
+                            LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $1
                             WHERE id = $1
                         "#,
                     )
                     .bind(workspace_id)
+                    .bind(user_id)
                     .fetch_optional(tx.as_mut())
                     .await?;
 
@@ -261,9 +274,14 @@ impl WorkspaceReader for WorkspaceGateway {
                                 ) AS total_members,
                                 (
                                     SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
-                                ) AS total_projects
-                            FROM
-                                workspaces AS w
+                                ) AS total_projects,
+                                CASE
+                                    WHEN w.owner_user_id = $1 THEN 'owner'
+                                    WHEN wm.role = 'admin'::workspace_members_role THEN 'admin'
+                                    ELSE 'member'
+                                END AS user_role
+                            FROM workspaces AS w
+                            LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $1
                             WHERE
                                 w.owner_user_id = $1
                                 OR EXISTS (
@@ -365,11 +383,17 @@ impl WorkspaceReader for WorkspaceGateway {
             .await
     }
 
-    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<WorkspaceView>> {
+    async fn find_by_id_and_slug(
+        &self,
+        workspace_id: &Id<Workspace>,
+        user_id: &Id<User>,
+        slug: &str,
+    ) -> AppResult<Option<WorkspaceView>> {
         self.session
             .with_tx(|tx| {
                 let workspace_id = workspace_id.value;
                 let slug = slug.to_owned();
+                let user_id = user_id.value;
                 async move {
                     let row = sqlx::query(
                         r#"
@@ -396,13 +420,20 @@ impl WorkspaceReader for WorkspaceGateway {
                                 ) AS total_members,
                                 (
                                     SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
-                                ) AS total_projects
+                                ) AS total_projects,
+                                CASE
+                                    WHEN w.owner_user_id = $3 THEN 'owner'
+                                    WHEN wm.role = 'admin'::workspace_members_role THEN 'admin'
+                                    ELSE 'member'
+                                END AS user_role
                             FROM workspaces AS w
+                            LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $1
                             WHERE w.id = $1 AND w.slug = $2
                         "#,
                     )
                     .bind(workspace_id)
                     .bind(slug)
+                    .bind(user_id)
                     .fetch_optional(tx.as_mut())
                     .await?;
 

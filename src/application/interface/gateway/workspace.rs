@@ -14,7 +14,7 @@ pub trait WorkspaceWriter: Send + Sync {
 
 #[async_trait]
 pub trait WorkspaceReader: Send + Sync {
-    async fn get(&self, workspace_id: &Id<Workspace>) -> AppResult<Option<WorkspaceView>>;
+    async fn get(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<Option<WorkspaceView>>;
     async fn find_accessible_by_user(
         &self,
         user_id: &Id<User>,
@@ -23,7 +23,12 @@ pub trait WorkspaceReader: Send + Sync {
     ) -> AppResult<Vec<WorkspaceView>>;
     async fn count_accessible_by_user(&self, user_id: &Id<User>) -> AppResult<i64>;
     async fn is_accessible_by_user(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<bool>;
-    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<WorkspaceView>>;
+    async fn find_by_id_and_slug(
+        &self,
+        workspace_id: &Id<Workspace>,
+        user_id: &Id<User>,
+        slug: &str,
+    ) -> AppResult<Option<WorkspaceView>>;
 }
 
 #[async_trait]
