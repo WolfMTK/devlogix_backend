@@ -23,8 +23,7 @@ use crate::domain::entities::workspace::{
     Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceUserRole,
     WorkspaceVisibility,
 };
-
-const MAX_PER_PAGE: i64 = 100;
+use crate::infra::constants::MAX_PER_PAGE;
 
 #[derive(Clone)]
 pub struct CreateWorkspaceInteractor {

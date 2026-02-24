@@ -14,6 +14,7 @@ pub mod config;
 pub mod db;
 pub mod setup;
 pub mod state;
+pub mod constants;
 
 pub fn argon2_password_hasher() -> ArgonPasswordHasher {
     ArgonPasswordHasher::default()
