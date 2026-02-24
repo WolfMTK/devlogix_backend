@@ -10,7 +10,7 @@ pub struct LoginRequest {
     pub remember_me: bool,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct MessageResponse {
     pub message: String,
 }

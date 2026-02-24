@@ -5,12 +5,16 @@ use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
-use crate::adapter::http::routes::{auth, user};
+use crate::adapter::http::routes::{auth, project, user, workspace};
 use crate::adapter::http::schema::ValidPassword;
 use crate::adapter::http::schema::auth::{LoginRequest, MessageResponse, ResendConfirmationRequest};
 use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::password_reset::{ForgotPasswordResetRequest, ResetPasswordRequest};
+use crate::adapter::http::schema::project::CreateProjectRequest;
 use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
+use crate::adapter::http::schema::workspace::{
+    CreateWorkspaceRequest, GetWorkspaceResponse, InviteWorkspaceMemberRequest, WorkspaceListResponse,
+};
 
 struct SecurityAddon;
 
@@ -37,7 +41,18 @@ impl Modify for SecurityAddon {
         auth::confirm_email,
         auth::resend_confirmation,
         auth::forgot_password,
-        auth::reset_password
+        auth::reset_password,
+        workspace::create_workspace,
+        workspace::get_workspace_list,
+        workspace::get_workspace,
+        workspace::get_owner_workspace,
+        workspace::update_workspace,
+        workspace::delete_workspace,
+        workspace::check_workspace_owner,
+        workspace::invite_workspace_member,
+        workspace::accept_workspace_invite,
+        workspace::get_workspace_logo,
+        project::create_project
     ),
     components(
         schemas(
@@ -51,7 +66,12 @@ impl Modify for SecurityAddon {
             UpdateUserRequest,
             ValidPassword,
             ForgotPasswordResetRequest,
-            ResetPasswordRequest
+            ResetPasswordRequest,
+            CreateWorkspaceRequest,
+            GetWorkspaceResponse,
+            WorkspaceListResponse,
+            InviteWorkspaceMemberRequest,
+            CreateProjectRequest
         )
     )
 )]

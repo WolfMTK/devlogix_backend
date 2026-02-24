@@ -1,6 +1,6 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Router, middleware};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -12,7 +12,12 @@ use crate::adapter::http::middleware::auth::{auth_middleware, session_cookie_mid
 use crate::adapter::http::routes::auth::{
     confirm_email, forgot_password, login, logout, resend_confirmation, reset_password,
 };
+use crate::adapter::http::routes::project::create_project;
 use crate::adapter::http::routes::user::{get_me, register, update_user};
+use crate::adapter::http::routes::workspace::{
+    accept_workspace_invite, check_workspace_owner, create_workspace, delete_workspace, get_owner_workspace,
+    get_workspace, get_workspace_list, get_workspace_logo, invite_workspace_member, update_workspace,
+};
 use crate::infra::config::AppConfig;
 use crate::infra::state::AppState;
 
@@ -59,8 +64,8 @@ pub fn user_router(state: AppState) -> Router<AppState> {
     let public_routes = Router::new().route("/register", post(register));
 
     let protected_routes = Router::new()
-        .route("/me", get(get_me))
         .route("/", patch(update_user))
+        .route("/me", get(get_me))
         .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
@@ -82,10 +87,39 @@ pub fn auth_router(state: AppState) -> Router<AppState> {
     Router::new().merge(public_routes).merge(protected_routes)
 }
 
+pub fn workspace_router(state: AppState) -> Router<AppState> {
+    let protected_routes = Router::new()
+        .route("/", post(create_workspace))
+        .route("/", get(get_workspace_list))
+        .route("/{workspace_id}/{slug}", get(get_workspace))
+        .route("/{workspace_id}/{slug}/owner", get(get_owner_workspace))
+        .route("/{workspace_id}", patch(update_workspace))
+        .route("/{workspace_id}", delete(delete_workspace))
+        .route("/{workspace_id}/check-owner", get(check_workspace_owner))
+        .route("/{workspace_id}/invites", post(invite_workspace_member))
+        .route("/invites/accept", get(accept_workspace_invite))
+        .route("/{workspace_id}/storage/{file_name}", get(get_workspace_logo))
+        .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    Router::new().merge(protected_routes)
+}
+
+pub fn project_router(state: AppState) -> Router<AppState> {
+    let protected_routes = Router::new()
+        .route("/", post(create_project))
+        .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    Router::new().merge(protected_routes)
+}
+
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .nest("/users", user_router(state.clone()))
         .nest("/auth", auth_router(state.clone()))
+        .nest("/workspaces", workspace_router(state.clone()))
+        .nest("/projects", project_router(state.clone()))
         .route("/openapi.json", get(openapi_json))
         .route("/docs", get(docs_ui))
 }

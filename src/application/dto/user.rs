@@ -24,5 +24,6 @@ pub struct UpdateUserDTO {
     pub email: Option<String>,
     pub old_password: Option<String>,
     pub password1: Option<String>,
+    #[allow(dead_code)]
     pub password2: Option<String>,
 }

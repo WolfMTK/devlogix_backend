@@ -1,3 +1,4 @@
+// TODO: add integration tests for handler `update_user`
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -5,7 +6,6 @@ use axum::response::IntoResponse;
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::MessageResponse;
-use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::user::{CreateUserRequest, GetUserResponse, UpdateUserRequest};
 use crate::adapter::http::validation::ValidJson;
 use crate::application::app_error::AppResult;
@@ -30,12 +30,12 @@ use crate::application::interactors::users::{CreateUserInteractor, GetMeInteract
     ),
     responses(
         (
-            status = 200,
+            status = 201,
             description = "User registered",
-            body = IdResponse,
+            body = MessageResponse,
             example = json!(
                 {
-                    "id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a"
+                    "message": "The user has been created"
                 }
             )
         ),
@@ -76,9 +76,13 @@ pub async fn register(
         password1: payload.password1.value().to_string(),
         password2: payload.password2.value().to_string(),
     };
-    let user_id = interactor.execute(dto).await?;
-    let response = IdResponse { id: user_id.id };
-    Ok((StatusCode::OK, Json(response)))
+    interactor.execute(dto).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(MessageResponse {
+            message: "The user has been created".to_string(),
+        }),
+    ))
 }
 
 #[utoipa::path(
@@ -225,238 +229,390 @@ pub async fn update_user(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use rstest::rstest;
+    use serde_json::Value;
+    use serial_test::serial;
+    use tower::ServiceExt;
+    use uuid::Uuid;
 
-    use async_trait::async_trait;
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-    use mockall::mock;
-    use serde_json::json;
+    use crate::infra::app::create_app;
+    use crate::infra::state::AppState;
+    use crate::tests::fixtures::init_test_app_state;
+    use crate::tests::helpers::{
+        delete_user, find_user_by_email, hash_password, insert_confirmed_user, insert_session, session_cookie,
+        unique_credentials,
+    };
 
-    use super::{get_me, register, update_user};
-    use crate::adapter::http::middleware::extractor::AuthUser;
-    use crate::adapter::http::schema::user::{CreateUserRequest, UpdateUserRequest};
-    use crate::adapter::http::validation::ValidJson;
-    use crate::application::app_error::AppResult;
-    use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
-    use crate::application::interface::crypto::CredentialsHasher;
-    use crate::application::interface::db::DBSession;
-    use crate::application::interface::gateway::user::{UserReader, UserWriter};
-    use crate::domain::entities::id::Id;
-    use crate::domain::entities::user::User;
-
-    mock! {
-        pub DBSessionMock {}
-
-        #[async_trait]
-        impl DBSession for DBSessionMock {
-            async fn commit(&self) -> AppResult<()>;
-        }
+    // === register ===
+    fn get_request_register(body: &Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/users/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
     }
 
-    mock! {
-        pub UserWriterMock {}
-
-        #[async_trait]
-        impl UserWriter for UserWriterMock {
-            async fn insert(&self, user: User) -> AppResult<Id<User>>;
-            async fn update(&self, user: User) -> AppResult<Id<User>>;
-        }
-    }
-
-    mock! {
-        pub HasherMock {}
-
-        #[async_trait]
-        impl CredentialsHasher for HasherMock {
-            async fn hash_password(&self, password: &str) -> AppResult<String>;
-            async fn verify_password(&self, password: &str, hashed: &str) -> AppResult<bool>;
-        }
-    }
-
-    type BoxFn<A, R> = Box<dyn Fn(A) -> R + Send + Sync>;
-
-    struct MockUserReader {
-        is_user_fn: Option<BoxFn<(String, String), AppResult<bool>>>,
-        find_by_id_fn: Option<BoxFn<String, AppResult<Option<User>>>>,
-        is_unique_fn: Option<BoxFn<(String, Option<String>, Option<String>), AppResult<bool>>>,
-    }
-
-    impl MockUserReader {
-        fn new() -> Self {
-            Self {
-                is_user_fn: None,
-                find_by_id_fn: None,
-                is_unique_fn: None,
-            }
-        }
-
-        fn expect_is_user(&mut self, f: impl Fn(&str, &str) -> AppResult<bool> + Send + Sync + 'static) {
-            self.is_user_fn = Some(Box::new(move |(u, e)| f(&u, &e)));
-        }
-
-        fn expect_find_by_id(&mut self, f: impl Fn(&Id<User>) -> AppResult<Option<User>> + Send + Sync + 'static) {
-            self.find_by_id_fn = Some(Box::new(move |id| {
-                let user_id: Id<User> = id.try_into().expect("valid uuid");
-                f(&user_id)
-            }));
-        }
-
-        fn expect_is_unique(
-            &mut self,
-            f: impl Fn(&Id<User>, Option<&str>, Option<&str>) -> AppResult<bool> + Send + Sync + 'static,
-        ) {
-            self.is_unique_fn = Some(Box::new(move |(id, u, e)| {
-                let user_id: Id<User> = id.try_into().expect("valid uuid");
-                f(&user_id, u.as_deref(), e.as_deref())
-            }));
-        }
-    }
-
-    #[async_trait]
-    impl UserReader for MockUserReader {
-        async fn find_by_email(&self, _email: &str) -> AppResult<Option<User>> {
-            Ok(None)
-        }
-
-        async fn is_user(&self, username: &str, email: &str) -> AppResult<bool> {
-            (self.is_user_fn.as_ref().expect("is_user must be mocked"))((username.to_string(), email.to_string()))
-        }
-
-        async fn find_by_id(&self, user_id: &Id<User>) -> AppResult<Option<User>> {
-            (self.find_by_id_fn.as_ref().expect("find_by_id must be mocked"))(user_id.value.to_string())
-        }
-
-        async fn is_username_or_email_unique(
-            &self,
-            user_id: &Id<User>,
-            username: Option<&str>,
-            email: Option<&str>,
-        ) -> AppResult<bool> {
-            (self
-                .is_unique_fn
-                .as_ref()
-                .expect("is_username_or_email_unique must be mocked"))((
-                user_id.value.to_string(),
-                username.map(ToString::to_string),
-                email.map(ToString::to_string),
-            ))
-        }
-    }
-
-    fn sample_user() -> User {
-        let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "hashed_password".to_string());
-        user.id = Id::<User>::generate();
-        user
-    }
-
+    // Tests successful registration of a new user with valid credentials
+    // Verifies:
+    // - Endpoint returns 201 CREATED status
+    // - Response contains the expected success message
+    // - User is properly saved in the database (implicitly verified via find/delete operations)
+    #[rstest]
     #[tokio::test]
-    async fn test_register_handler_returns_user_id() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut user_writer = MockUserWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut hasher = MockHasherMock::new();
+    #[serial]
+    async fn test_register_successfully(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        user_reader.expect_is_user(|_, _| Ok(false));
-        hasher.expect_hash_password().returning(|_| Ok("password".to_string()));
-        user_writer.expect_insert().returning(|user| Ok(user.id));
-        db_session.expect_commit().returning(|| Ok(()));
+        let password = "Password123!";
+        let (username, email) = unique_credentials();
+        let body = serde_json::json!({
+            "username": username,
+            "email": email,
+            "password1": password,
+            "password2": password,
+        });
 
-        let interactor = CreateUserInteractor::new(
-            Arc::new(db_session),
-            Arc::new(user_writer),
-            Arc::new(user_reader),
-            Arc::new(hasher),
-        );
+        let request = get_request_register(&body);
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-        let payload: CreateUserRequest = serde_json::from_value(json!({
-            "username": "Test",
+        if let Some(user_id) = find_user_by_email(&state.pool, &email).await {
+            delete_user(&state.pool, user_id).await
+        }
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(json["message"].is_string(), "response must contain an 'id' field");
+        assert_eq!(json["message"], "The user has been created".to_string());
+    }
+
+    // Tests that registration fails with BAD_REQUEST when attempting to use an email that already exists
+    // Verifies:
+    // - Endpoint returns 400 BAD_REQUEST status when email is already taken
+    // - Prevents duplicate user registration with the same email address
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_register_duplicate_email(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let password = "Password123!";
+        let hashed_password = hash_password(&state, password).await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+
+        let body = serde_json::json!({
+            "username": format!("other_{}", username),
+            "email": email,
+            "password1": password,
+            "password2": password,
+        });
+
+        let request = get_request_register(&body);
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    // Tests that registration fails with BAD_REQUEST for various invalid input scenarios
+    // Verifies:
+    // - Endpoint returns 400 BAD_REQUEST for:
+    //   - Password too short
+    //   - Password without numbers
+    //   - Password without uppercase letters
+    //   - Password without special characters
+    //   - Passwords that don't match
+    //   - Username too short
+    //   - Invalid email format
+    #[rstest]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "1234567",
+            "password2": "1234567"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "12345678",
+            "password2": "12345678"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "password",
+            "password2": "password"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "12345678!",
+            "password2": "12345678!"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "Password",
+            "password2": "Password"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "password!",
+            "password2": "password!"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "Password!",
+            "password2": "Password!"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "ex@example.com",
+            "password1": "Password123!",
+            "password2": "InvalidPassword123!"
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "usern",
             "email": "ex@example.com",
             "password1": "Password123!",
             "password2": "Password123!"
-        }))
-        .expect("valid create-user payload");
+        })
+    )]
+    #[case(
+        serde_json::json!({
+            "username": "username",
+            "email": "exexample.com",
+            "password1": "Password123!",
+            "password2": "Password123!"
+        })
+    )]
+    #[tokio::test]
+    #[serial]
+    async fn test_register_invalid_data(#[case] body: Value, #[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        let response = register(interactor, ValidJson(payload))
-            .await
-            .expect("register should pass")
-            .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+        let request = get_request_register(&body);
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
-    #[tokio::test]
-    async fn test_get_me_handler_returns_ok() {
-        let mut user_reader = MockUserReader::new();
-        let user = sample_user();
-        let expected_user_id = user.id.value.to_string();
-
-        let expected_user_id_for_closure = expected_user_id.clone();
-        user_reader.expect_find_by_id(move |_| {
-            let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "hashed_password".to_string());
-            user.id = expected_user_id_for_closure.clone().try_into().unwrap();
-            Ok(Some(user))
-        });
-
-        let interactor = GetMeInteractor::new(Arc::new(user_reader));
-        let auth_user = AuthUser {
-            user_id: expected_user_id,
-        };
-
-        let response = get_me(auth_user, interactor)
-            .await
-            .expect("get_me should pass")
-            .into_response();
-
-        assert_eq!(response.status(), StatusCode::OK);
+    // === get_me ===
+    fn get_request_get_me(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri("/users/me")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
     }
 
+    // Tests successful retrieval of current user profile with valid session
+    // Verifies:
+    // - Endpoint returns 200 OK status when authenticated with valid session cookie
+    // - Response contains correct user data
+    #[rstest]
     #[tokio::test]
-    async fn test_update_user_handler_returns_ok() {
-        let mut db_session = MockDBSessionMock::new();
-        let mut user_writer = MockUserWriterMock::new();
-        let mut user_reader = MockUserReader::new();
-        let mut hasher = MockHasherMock::new();
+    #[serial]
+    async fn test_get_me_successfully(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        let existing_user = sample_user();
-        let existing_user_id = existing_user.id.value.to_string();
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
 
-        user_reader.expect_is_unique(|_, _, _| Ok(false));
-        user_reader.expect_find_by_id(move |_| {
-            let mut user = User::new("Test".to_string(), "ex@example.com".to_string(), "password".to_string());
-            user.id = existing_user_id.clone().try_into().unwrap();
-            Ok(Some(user))
-        });
-        hasher.expect_verify_password().returning(|_, _| Ok(true));
-        hasher
-            .expect_hash_password()
-            .returning(|_| Ok("new_hashed_password".to_string()));
-        user_writer.expect_update().returning(|user| Ok(user.id));
-        db_session.expect_commit().returning(|| Ok(()));
+        let cookie_name = &state.config.session.cookie_name;
 
-        let interactor = UpdateUserInteractor::new(
-            Arc::new(db_session),
-            Arc::new(user_writer),
-            Arc::new(user_reader),
-            Arc::new(hasher),
-        );
-        let auth_user = AuthUser {
-            user_id: existing_user.id.value.to_string(),
-        };
-        let payload: UpdateUserRequest = serde_json::from_value(json!({
-            "username": "updated_user",
-            "email": "updated@example.com",
-            "old_password": "Password123!",
+        let request = get_request_get_me(session_id, cookie_name);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["email"], email);
+        assert_eq!(json["username"], username);
+    }
+
+    // Tests that accessing current user profile fails when no session cookie is provided
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED status for unauthenticated requests
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_me_with_invalid_session(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/users/me")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // === update_user ===
+    fn get_request_update_user(body: &Value, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("PATCH")
+            .uri("/users")
+            .header("content-type", "application/json")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap()
+    }
+
+    // Tests successful username update
+    // Verifies:
+    // - Endpoint returns 200 OK when updating username with valid data
+    // - Response contains success message "success"
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_username(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let body = serde_json::json!({ "username": "new_username_ok" });
+        let request = get_request_update_user(&body, session_id, cookie_name);
+
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes: bytes::Bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["message"], "success");
+    }
+
+    // Tests successful password update
+    // Verifies:
+    // - Endpoint returns 200 OK when updating password with valid old and new passwords
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_password(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let old_password = "Password123!";
+        let hashed_password = hash_password(&state, old_password).await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let body = serde_json::json!({
+            "old_password": old_password,
             "password1": "NewPassword123!",
             "password2": "NewPassword123!"
-        }))
-        .expect("valid update payload");
+        });
+        let request = get_request_update_user(&body, session_id, cookie_name);
+        let status = app.oneshot(request).await.unwrap().status();
 
-        let response = update_user(auth_user, interactor, ValidJson(payload))
-            .await
-            .expect("update_user should pass")
-            .into_response();
+        delete_user(&state.pool, user_id).await;
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    // Tests that update fails with invalid data
+    // Verifies:
+    // - Returns 400 when username is too short
+    // - Returns 400 when passwords don't match
+    // - Returns 400 when new password is provided without old_password
+    // - Returns 400 when new password fails validation rules
+    #[rstest]
+    #[case(serde_json::json!({ "username": "ab" }))]
+    #[case(serde_json::json!({ "old_password": "Password123!", "password1": "NewPassword123!", "password2": "OtherPassword123!" }))]
+    #[case(serde_json::json!({ "password1": "NewPassword123!", "password2": "NewPassword123!" }))]
+    #[case(serde_json::json!({ "old_password": "Password123!", "password1": "weak", "password2": "weak" }))]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_invalid_data(
+        #[case] body: Value,
+        #[future] init_test_app_state: anyhow::Result<AppState>,
+    ) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed_password = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed_password).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
+
+        let request = get_request_update_user(&body, session_id, cookie_name);
+        let status = app.oneshot(request).await.unwrap().status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    // Tests that update fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_user_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let body = serde_json::json!({ "username": "new_username_ok" });
+        let request = Request::builder()
+            .method("PATCH")
+            .uri("/users")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+
+        assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::UNAUTHORIZED);
     }
 }

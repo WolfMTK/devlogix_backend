@@ -7,17 +7,26 @@ use sqlx::{Pool, Postgres};
 
 use crate::adapter::db::gateway::email_confirmation::EmailConfirmationGateway;
 use crate::adapter::db::gateway::password_reset::PasswordResetTokenGateway;
+use crate::adapter::db::gateway::project::ProjectGateway;
 use crate::adapter::db::gateway::session::SessionGateway;
 use crate::adapter::db::gateway::user::UserGateway;
+use crate::adapter::db::gateway::workspace::{WorkspaceGateway, WorkspaceInviteGateway, WorkspaceMemberGateway};
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
 use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
 use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
+use crate::application::interactors::project::CreateProjectInteractor;
 use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
+use crate::application::interactors::workspace::{
+    AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
+    GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+};
 use crate::application::interface::crypto::CredentialsHasher;
 use crate::application::interface::email::EmailSender;
+use crate::application::interface::s3::StorageClient;
 use crate::infra::config::AppConfig;
 
 #[derive(Clone)]
@@ -26,6 +35,7 @@ pub struct AppState {
     pub hasher: Arc<dyn CredentialsHasher>,
     pub config: Arc<AppConfig>,
     pub email_sender: Arc<dyn EmailSender>,
+    pub storage: Arc<dyn StorageClient>,
 }
 
 impl FromRef<AppState> for Arc<AppConfig> {
@@ -324,5 +334,307 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         ResetPasswordInteractor::from_app_state(&app_state).await
+    }
+}
+
+// CreateWorkspaceInteractor
+#[async_trait]
+impl FromAppState for CreateWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+
+        Ok(CreateWorkspaceInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            state.storage.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for CreateWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        CreateWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetWorkspaceListInteractor
+#[async_trait]
+impl FromAppState for GetWorkspaceListInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session);
+        Ok(GetWorkspaceListInteractor::new(Arc::new(workspace_gateway)))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetWorkspaceListInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetWorkspaceListInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetWorkspaceLogoInteractor
+#[async_trait]
+impl FromAppState for GetWorkspaceLogoInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session);
+        Ok(GetWorkspaceLogoInteractor::new(
+            Arc::new(workspace_gateway),
+            state.storage.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetWorkspaceLogoInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetWorkspaceLogoInteractor::from_app_state(&app_state).await
+    }
+}
+
+// UpdateWorkspaceInteractor
+#[async_trait]
+impl FromAppState for UpdateWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        Ok(UpdateWorkspaceInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway.clone()),
+            Arc::new(workspace_gateway),
+            state.storage.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for UpdateWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        UpdateWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// DeleteWorkspaceInteractor
+#[async_trait]
+impl FromAppState for DeleteWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        Ok(DeleteWorkspaceInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway.clone()),
+            Arc::new(workspace_gateway),
+            state.storage.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for DeleteWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        DeleteWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// CheckWorkspaceOwnerInteractor
+#[async_trait]
+impl FromAppState for CheckWorkspaceOwnerInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        Ok(CheckWorkspaceOwnerInteractor::new(Arc::new(workspace_gateway)))
+    }
+}
+
+impl<S> FromRequestParts<S> for CheckWorkspaceOwnerInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        CheckWorkspaceOwnerInteractor::from_app_state(&app_state).await
+    }
+}
+
+// InviteWorkspaceMemberInteractor
+#[async_trait]
+impl FromAppState for InviteWorkspaceMemberInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let workspace_member_gateway = WorkspaceMemberGateway::new(session.clone());
+        let workspace_invite_gateway = WorkspaceInviteGateway::new(session.clone());
+
+        Ok(InviteWorkspaceMemberInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            Arc::new(workspace_member_gateway),
+            Arc::new(workspace_invite_gateway.clone()),
+            Arc::new(workspace_invite_gateway),
+            state.email_sender.clone(),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for InviteWorkspaceMemberInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        InviteWorkspaceMemberInteractor::from_app_state(&app_state).await
+    }
+}
+
+// AcceptWorkpspaceInviteIneractor
+#[async_trait]
+impl FromAppState for AcceptWorkspaceInviteInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_member_gateway = WorkspaceMemberGateway::new(session.clone());
+        let workspace_invite_gateway = WorkspaceInviteGateway::new(session.clone());
+
+        Ok(AcceptWorkspaceInviteInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_invite_gateway.clone()),
+            Arc::new(workspace_invite_gateway),
+            Arc::new(workspace_member_gateway.clone()),
+            Arc::new(workspace_member_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for AcceptWorkspaceInviteInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        AcceptWorkspaceInviteInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetWorkspaceInteractor
+#[async_trait]
+impl FromAppState for GetWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session);
+
+        Ok(GetWorkspaceInteractor::new(Arc::new(workspace_gateway)))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetOwnerWorkspaceInteractor
+#[async_trait]
+impl FromAppState for GetOwnerWorkspaceInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let user_gateway = UserGateway::new(session);
+
+        Ok(GetOwnerWorkspaceInteractor::new(
+            Arc::new(workspace_gateway),
+            Arc::new(user_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetOwnerWorkspaceInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetOwnerWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// CreateProjectInteractor
+#[async_trait]
+impl FromAppState for CreateProjectInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let project_gateway = ProjectGateway::new(session.clone());
+
+        Ok(CreateProjectInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            Arc::new(project_gateway.clone()),
+            Arc::new(project_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for CreateProjectInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        CreateProjectInteractor::from_app_state(&app_state).await
     }
 }

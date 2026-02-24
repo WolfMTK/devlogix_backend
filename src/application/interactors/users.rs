@@ -34,22 +34,23 @@ impl CreateUserInteractor {
         }
     }
 
-    pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<IdDTO> {
+    pub async fn execute(&self, dto: CreateUserDTO) -> AppResult<()> {
         Self::check_password(&dto.password1, &dto.password2)?;
         self.check_user_exists(&dto.username, &dto.email).await?;
         let hash = self.hasher.hash_password(dto.password1.as_str()).await?;
         let username = dto.username.clone();
         let user = User::new(dto.username, dto.email, hash);
-        let user_id = match self.user_writer.insert(user).await {
-            Ok(id) => id.value.to_string(),
+        match self.user_writer.insert(user).await {
+            Ok(_) => {
+                self.db_session.commit().await?;
+                info!("The {} has been created", username);
+                Ok(())
+            }
             Err(err) => {
                 error!("The {} has not been created created. Error: {}", username, err);
-                return Err(err);
+                Err(err)
             }
-        };
-        self.db_session.commit().await?;
-        info!("The {} has been created", username);
-        Ok(IdDTO { id: user_id })
+        }
     }
 
     fn check_password(password1: &str, password2: &str) -> AppResult<()> {
@@ -409,9 +410,6 @@ mod tests {
         let interactor = deps.create_user_interactor();
         let result = interactor.execute(valid_create_user_dto).await;
         assert!(result.is_ok());
-        let id_dto = result.unwrap();
-        assert!(!id_dto.id.is_empty());
-        assert!(uuid::Uuid::parse_str(&id_dto.id).is_ok());
     }
 
     #[rstest]

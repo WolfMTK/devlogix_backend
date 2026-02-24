@@ -79,7 +79,7 @@ impl UserWriter for UserGateway {
                             UPDATE
                                 users
                             SET
-                                username = $2, email = $3, password = $4, is_confirmed = $5
+                                username = $2, email = $3, password = $4, is_confirmed = $5, updated_at = now()
                             WHERE
                                 id = $1
                             RETURNING

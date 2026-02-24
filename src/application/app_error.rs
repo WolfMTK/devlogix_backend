@@ -66,6 +66,48 @@ pub enum AppError {
 
     #[error("Password reset token has expired")]
     ResetTokenExpired,
+
+    #[error("Storage error: {0}")]
+    StorageError(String),
+
+    #[error("File not found")]
+    StorageNotFound,
+
+    #[error("Invalid visibility value: '{0}'. Expected 'public' or 'private'.")]
+    InvalidVisibility(String),
+
+    #[error("Workspace creation error")]
+    CreatedWorkspaceError,
+
+    #[error("Unsupported image format")]
+    UnsupportedImageFormat,
+
+    #[error("Workspace not found")]
+    WorkspaceNotFound,
+
+    #[error("Access denied")]
+    AccessDenied,
+
+    #[error("Invite not found")]
+    InviteNotFound,
+
+    #[error("Invite already sent to this email")]
+    InviteAlreadyExists,
+
+    #[error("Invite has expired")]
+    InviteExpired,
+
+    #[error("Invite is not pending")]
+    InviteInvalid,
+
+    #[error("Invalid project type value: '{0}'. Expected 'kanban' or 'scrum'.")]
+    InvalidProjectType(String),
+
+    #[error("Project already exists")]
+    ProjectAlreadyExists,
+
+    #[error("Invalid user role")]
+    InvalidWorkspaceUserRole,
 }
 
 pub type AppResult<T> = Result<T, AppError>;

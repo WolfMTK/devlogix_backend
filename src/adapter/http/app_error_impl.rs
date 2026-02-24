@@ -28,15 +28,30 @@ impl IntoResponse for AppError {
             AppError::InvalidResetToken => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ResetTokenAlreadyUsed => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::ResetTokenExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidVisibility(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::CreatedWorkspaceError => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::UnsupportedImageFormat => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InviteExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InviteInvalid => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidProjectType(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::ProjectAlreadyExists => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidWorkspaceUserRole => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+
+            // NOT FOUND
+            AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
+            AppError::InviteNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
 
             // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
+            AppError::WorkspaceNotFound => (StatusCode::FORBIDDEN, Some(self.to_string())),
+            AppError::AccessDenied => (StatusCode::FORBIDDEN, Some(self.to_string())),
 
             // UNAUTHORIZED
             AppError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Some(self.to_string())),
 
             // CONFLICT
             AppError::EmailAlreadyConfirmed => (StatusCode::CONFLICT, Some(self.to_string())),
+            AppError::InviteAlreadyExists => (StatusCode::CONFLICT, Some(self.to_string())),
 
             // INTERNAL_SERVER_ERROR
             _ => (StatusCode::INTERNAL_SERVER_ERROR, None),
