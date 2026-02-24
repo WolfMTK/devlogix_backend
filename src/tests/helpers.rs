@@ -125,3 +125,25 @@ pub async fn find_workspace_id_and_slug(pool: &PgPool, owner_user_id: Uuid) -> O
     .await
     .expect("find workspace id and slug")
 }
+
+pub async fn insert_workspace(pool: &PgPool, owner_user_id: Uuid, name: &str) -> Uuid {
+    let slug = name.to_lowercase().replace(" ", "-");
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+            INSERT INTO workspaces (owner_user_id, name, slug, primary_color, visibility)
+            VALUES ($1, $2, $3, 'FF5733', 'private'::workspace_visibility)
+            RETURNING id
+        "#,
+    )
+    .bind(owner_user_id)
+    .bind(name)
+    .bind(slug)
+    .fetch_one(pool)
+    .await
+    .expect("insert workspace")
+}
+
+pub fn unique_project_key() -> String {
+    let id = Uuid::now_v7().as_simple().to_string();
+    format!("P{}", &id[..7].to_uppercase())
+}
