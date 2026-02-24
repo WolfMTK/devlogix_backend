@@ -100,7 +100,6 @@ impl GetWorkspaceListInteractor {
         let offset = (page - 1) * per_page;
 
         let total = self.workspace_reader.count_accessible_by_user(&user_id).await?;
-        info!("{:?}", total);
         let workspaces = self
             .workspace_reader
             .find_accessible_by_user(&user_id, per_page, offset)
