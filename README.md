@@ -84,7 +84,7 @@ cargo build --release
 
 Environment Variables for Testing
 
-'''
+```bash
 # DATABASE
 export TEST_DATABASE_URL="postgres://postgres:password@localhost:5432/test"
 
@@ -100,7 +100,7 @@ export TEST_SMTP_PORT="587"
 export TEST_SMTP_USERNAME="user"
 export TEST_SMTP_PASSWORD="pass"
 export TEST_SMTP_FROM="example@example.com"
-'''
+```
 
 ## Configuration
 
