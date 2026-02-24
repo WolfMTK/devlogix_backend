@@ -25,6 +25,7 @@ pub struct WorkspaceDTO {
     pub updated_at: DateTime<Utc>,
     pub total_members: i64,
     pub total_projects: i64,
+    pub user_role: String,
 }
 
 #[derive(Debug, Clone)]

@@ -20,7 +20,8 @@ use crate::application::interface::s3::StorageClient;
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{
-    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceVisibility,
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceUserRole,
+    WorkspaceVisibility,
 };
 
 const MAX_PER_PAGE: i64 = 100;
@@ -125,6 +126,11 @@ impl GetWorkspaceListInteractor {
                     updated_at: workspace.updated_at,
                     total_members: workspace_view.total_members,
                     total_projects: workspace_view.total_projects,
+                    user_role: match workspace_view.user_role {
+                        WorkspaceUserRole::Owner => "owner".to_string(),
+                        WorkspaceUserRole::Admin => "admin".to_string(),
+                        WorkspaceUserRole::Member => "member".to_string(),
+                    },
                 }
             })
             .collect();
@@ -206,7 +212,7 @@ impl UpdateWorkspaceInteractor {
 
         let workspace_view = self
             .workspace_reader
-            .get(&workspace_id)
+            .get(&workspace_id, &user_id)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?;
 
@@ -285,7 +291,7 @@ impl DeleteWorkspaceInteractor {
 
         let workspace = self
             .workspace_reader
-            .get(&workspace_id)
+            .get(&workspace_id, &user_id)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?
             .workspace;
@@ -319,7 +325,7 @@ impl CheckWorkspaceOwnerInteractor {
 
         let workspace = self
             .workspace_reader
-            .get(&workspace_id)
+            .get(&workspace_id, &user_id)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?
             .workspace;
@@ -367,7 +373,7 @@ impl InviteWorkspaceMemberInteractor {
 
         let workspace = self
             .workspace_reader
-            .get(&workspace_id)
+            .get(&workspace_id, &user_id)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?
             .workspace;
@@ -509,7 +515,7 @@ impl GetWorkspaceInteractor {
 
         let workspace_view = self
             .workspace_reader
-            .find_by_id_and_slug(&workspace_id, &dto.slug)
+            .find_by_id_and_slug(&workspace_id, &user_id, &dto.slug)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?;
         let workspace = workspace_view.workspace;
@@ -539,6 +545,11 @@ impl GetWorkspaceInteractor {
             updated_at: workspace.updated_at,
             total_members: workspace_view.total_members,
             total_projects: workspace_view.total_projects,
+            user_role: match workspace_view.user_role {
+                WorkspaceUserRole::Owner => "owner".to_string(),
+                WorkspaceUserRole::Admin => "admin".to_string(),
+                WorkspaceUserRole::Member => "member".to_string(),
+            },
         })
     }
 }
@@ -563,7 +574,7 @@ impl GetOwnerWorkspaceInteractor {
 
         let workspace = self
             .workspace_reader
-            .find_by_id_and_slug(&workspace_id, &dto.slug)
+            .find_by_id_and_slug(&workspace_id, &user_id, &dto.slug)
             .await?
             .ok_or(AppError::WorkspaceNotFound)?
             .workspace;

@@ -198,6 +198,7 @@ pub async fn get_workspace_list(
                     updated_at: w.updated_at,
                     total_members: w.total_members,
                     total_projects: w.total_projects,
+                    user_role: w.user_role,
                 })
                 .collect(),
             total: result.total,
@@ -709,6 +710,7 @@ pub async fn get_workspace(
             updated_at: workspace.updated_at,
             total_members: workspace.total_members,
             total_projects: workspace.total_projects,
+            user_role: workspace.user_role,
         }),
     ))
 }

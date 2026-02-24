@@ -165,6 +165,34 @@ impl WorkspaceInvite {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum WorkspaceUserRole {
+    Owner,
+    Admin,
+    Member,
+}
+
+impl FromStr for WorkspaceUserRole {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "owner" => Ok(WorkspaceUserRole::Owner),
+            "admin" => Ok(WorkspaceUserRole::Admin),
+            "member" => Ok(WorkspaceUserRole::Member),
+            other => Err(AppError::InvalidVisibility(other.to_string())),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkspaceView {
+    pub workspace: Workspace,
+    pub total_members: i64,
+    pub total_projects: i64,
+    pub user_role: WorkspaceUserRole,
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -310,11 +338,4 @@ mod tests {
         let workspace = make_workspace("Team 42");
         assert_eq!(workspace.slug, "team-42");
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkspaceView {
-    pub workspace: Workspace,
-    pub total_members: i64,
-    pub total_projects: i64,
 }
