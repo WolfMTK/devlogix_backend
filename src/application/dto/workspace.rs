@@ -23,6 +23,8 @@ pub struct WorkspaceDTO {
     pub visibility: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub total_members: i64,
+    pub total_projects: i64,
 }
 
 #[derive(Debug, Clone)]

@@ -311,3 +311,10 @@ mod tests {
         assert_eq!(workspace.slug, "team-42");
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct WorkspaceView {
+    pub workspace: Workspace,
+    pub total_members: i64,
+    pub total_projects: i64,
+}
