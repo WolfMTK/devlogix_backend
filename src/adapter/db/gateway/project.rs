@@ -45,7 +45,7 @@ impl ProjectWriter for ProjectGateway {
                                     description,
                                     project_key,
                                     type_project,
-                                    visibiltity,
+                                    visibility,
                                     created_at,
                                     updated_at
                                 )
@@ -80,7 +80,7 @@ impl ProjectReader for ProjectGateway {
     async fn check_project_key(&self, project_key: &str) -> AppResult<bool> {
         self.session
             .with_tx(|tx| {
-                let proejct_key = project_key.to_owned();
+                let project_key = project_key.to_owned();
                 async move {
                     let row = sqlx::query(
                         r#"
@@ -91,7 +91,7 @@ impl ProjectReader for ProjectGateway {
                         ) as is_project_key
                     "#,
                     )
-                    .bind(proejct_key)
+                    .bind(project_key)
                     .fetch_one(tx.as_mut())
                     .await?;
 
