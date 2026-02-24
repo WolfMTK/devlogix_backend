@@ -7,6 +7,7 @@ use sqlx::{Pool, Postgres};
 
 use crate::adapter::db::gateway::email_confirmation::EmailConfirmationGateway;
 use crate::adapter::db::gateway::password_reset::PasswordResetTokenGateway;
+use crate::adapter::db::gateway::project::ProjectGateway;
 use crate::adapter::db::gateway::session::SessionGateway;
 use crate::adapter::db::gateway::user::UserGateway;
 use crate::adapter::db::gateway::workspace::{WorkspaceGateway, WorkspaceInviteGateway, WorkspaceMemberGateway};
@@ -15,6 +16,7 @@ use crate::application::app_error::{AppError, AppResult};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
 use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
 use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
+use crate::application::interactors::project::CreateProjectInteractor;
 use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 use crate::application::interactors::workspace::{
@@ -604,5 +606,35 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         GetOwnerWorkspaceInteractor::from_app_state(&app_state).await
+    }
+}
+
+// CreateProjectInteractor
+#[async_trait]
+impl FromAppState for CreateProjectInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let project_gateway = ProjectGateway::new(session.clone());
+
+        Ok(CreateProjectInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            Arc::new(project_gateway.clone()),
+            Arc::new(project_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for CreateProjectInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        CreateProjectInteractor::from_app_state(&app_state).await
     }
 }
