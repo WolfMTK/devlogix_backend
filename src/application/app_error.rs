@@ -105,6 +105,9 @@ pub enum AppError {
 
     #[error("Project already exists")]
     ProjectAlreadyExists,
+
+    #[error("Invalid user role")]
+    InvalidWorkspaceUserRole,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
