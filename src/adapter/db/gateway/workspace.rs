@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::Row;
 use sqlx::postgres::PgRow;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
@@ -221,7 +221,7 @@ impl WorkspaceReader for WorkspaceGateway {
                                 END AS user_role
                             FROM workspaces AS w
                             LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $1
-                            WHERE id = $1
+                            WHERE w.id = $1
                         "#,
                     )
                     .bind(workspace_id)
@@ -427,7 +427,7 @@ impl WorkspaceReader for WorkspaceGateway {
                                     ELSE 'member'
                                 END AS user_role
                             FROM workspaces AS w
-                            LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $1
+                            LEFT JOIN workspace_members AS wm ON w.id = wm.workspace_id AND wm.user_id = $3
                             WHERE w.id = $1 AND w.slug = $2
                         "#,
                     )
