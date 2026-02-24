@@ -1,13 +1,15 @@
 use async_trait::async_trait;
 use futures::FutureExt;
+use sqlx::postgres::PgRow;
 use sqlx::Row;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
-use crate::application::app_error::AppResult;
+use crate::application::app_error::{AppError, AppResult};
 use crate::application::interface::gateway::project::{ProjectReader, ProjectWriter};
 use crate::domain::entities::id::Id;
 use crate::domain::entities::project::{Project, ProjectType, ProjectVisibility};
+use crate::domain::entities::workspace::Workspace;
 
 #[derive(Clone)]
 pub struct ProjectGateway {
@@ -17,6 +19,28 @@ pub struct ProjectGateway {
 impl ProjectGateway {
     pub fn new(session: SqlxSession) -> Self {
         Self { session }
+    }
+
+    fn get_project(row: &PgRow) -> AppResult<Project> {
+        let type_project_str: String = row.try_get("type_project")?;
+        let type_project = type_project_str.parse::<ProjectType>().map_err(|_| AppError::InvalidProjectType(type_project_str))?;
+
+        let visibility_str: String = row.try_get("visibility")?;
+        let visibility = visibility_str.parse::<ProjectVisibility>().map_err(|_| AppError::InvalidVisibility(visibility_str))?;
+
+        Ok({
+            Project {
+                id: Id::new(row.try_get("id")?),
+                workspace_id: Id::new(row.try_get("workspace_id")?),
+                name: row.try_get("name")?,
+                description: row.try_get("description")?,
+                project_key: row.try_get("project_key")?,
+                type_project,
+                visibility,
+                updated_at: row.try_get("updated_at")?,
+                created_at: row.try_get("created_at")?
+            }
+        })
     }
 }
 
@@ -100,5 +124,90 @@ impl ProjectReader for ProjectGateway {
                 .boxed()
             })
             .await
+    }
+
+    async fn get_all(&self, workspace_id: &Id<Workspace>, limit: i64, offset: i64) -> AppResult<Vec<Project>> {
+        self.session.with_tx(|tx| {
+            let workspace_id = workspace_id.value;
+            async move {
+                let rows = sqlx::query(
+                    r#"
+                            SELECT
+                                id,
+                                workspace_id,
+                                name,
+                                description,
+                                project_key,
+                                type_project,
+                                visibility,
+                                created_at,
+                                updated_at
+                            FROM projects
+                            WHERE id = $1
+                            LIMIT $2 OFFSET $3
+                    "#
+                )
+                    .bind(workspace_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(tx.as_mut())
+                    .await?;
+
+                rows.iter().map(Self::get_project).collect()
+            }.boxed()
+        }).await
+    }
+    async fn count_projects(&self, workspace_id: &Id<Workspace>) -> AppResult<i64> {
+        self.session.with_tx(|tx| {
+            let workspace_id = workspace_id.value;
+            async move {
+                let row = sqlx::query(
+                    r#"
+                        SELECT COUNT(id) AS total
+                        FROM projects
+                        WHERE workspace_id = $1
+                    "#
+                )
+                    .bind(workspace_id)
+                    .fetch_one(tx.as_mut())
+                    .await?;
+
+                Ok(row.try_get("total")?)
+            }.boxed()
+        }).await
+    }
+
+    async fn get(&self, workspace_id: &Id<Workspace>, project_id: &Id<Project>) -> AppResult<Option<Project>> {
+        self.session.with_tx(|tx| {
+            let workspace_id = workspace_id.value;
+            let project_id = project_id.value;
+            async move {
+                let row = sqlx::query(
+                    r#"
+                        SELECT
+                            id,
+                            workspace_id,
+                            name,
+                            description,
+                            project_key,
+                            type_project,
+                            visibility,
+                            created_at,
+                            updated_at
+                        FROM projects
+                        WHERE workspace_id = $1 AND id = $2
+                    "#
+                )
+                    .bind(workspace_id)
+                    .bind(project_id)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                match row {
+                    Some(row) => Ok(Some(Self::get_project(&row)?)),
+                    None => Ok(None)
+                }
+            }.boxed()
+        }).await
     }
 }
