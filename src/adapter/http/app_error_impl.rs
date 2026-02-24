@@ -33,6 +33,7 @@ impl IntoResponse for AppError {
             AppError::UnsupportedImageFormat => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::InviteExpired => (StatusCode::BAD_REQUEST, Some(self.to_string())),
             AppError::InviteInvalid => (StatusCode::BAD_REQUEST, Some(self.to_string())),
+            AppError::InvalidProjectType(_) => (StatusCode::BAD_REQUEST, Some(self.to_string())),
 
             // NOT FOUND
             AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),

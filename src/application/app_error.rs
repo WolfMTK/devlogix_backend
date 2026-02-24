@@ -99,6 +99,9 @@ pub enum AppError {
 
     #[error("Invite is not pending")]
     InviteInvalid,
+
+    #[error("Invalid project type value: '{0}'. Expected 'kanban' or 'scrum'.")]
+    InvalidProjectType(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
