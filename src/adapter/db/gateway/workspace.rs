@@ -13,7 +13,8 @@ use crate::application::interface::gateway::workspace::{
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{
-    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceVisibility,
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceView,
+    WorkspaceVisibility,
 };
 
 #[derive(Clone)]
@@ -45,29 +46,49 @@ impl WorkspaceGateway {
             updated_at: row.try_get("updated_at")?,
         })
     }
+
+    fn get_workspace_view(row: &PgRow) -> AppResult<WorkspaceView> {
+        let workspace = Self::get_workspace(&row)?;
+
+        Ok(WorkspaceView {
+            workspace,
+            total_members: row.try_get("total_members")?,
+            total_projects: row.try_get("total_projects")?,
+        })
+    }
 }
 
 #[async_trait]
 impl WorkspaceWriter for WorkspaceGateway {
     async fn insert(&self, workspace: Workspace) -> AppResult<Id<Workspace>> {
-        self.session.with_tx(|tx| {
-            let workspace = workspace.clone();
-            async move {
-                let visibility = match workspace.visibility {
-                    WorkspaceVisibility::Private => "private",
-                    WorkspaceVisibility::Public => "public",
-                };
-                println!("{}", &visibility);
-
-                let row = sqlx::query(
-                    r#"
-                        INSERT INTO workspaces
-                            (id, owner_user_id, name, description, slug, logo, primary_color, visibility, created_at, updated_at)
-                        VALUES
-                            ($1, $2, $3, $4, $5, $6, $7, $8::workspace_visibility, $9, $10)
-                        RETURNING id
-                    "#,
-                )
+        self.session
+            .with_tx(|tx| {
+                let workspace = workspace.clone();
+                async move {
+                    let visibility = match workspace.visibility {
+                        WorkspaceVisibility::Private => "private",
+                        WorkspaceVisibility::Public => "public",
+                    };
+                    let row = sqlx::query(
+                        r#"
+                            INSERT INTO workspaces
+                                (
+                                    id,
+                                    owner_user_id,
+                                    name,
+                                    description,
+                                    slug,
+                                    logo,
+                                    primary_color,
+                                    visibility,
+                                    created_at,
+                                    updated_at
+                                )
+                            VALUES
+                                ($1, $2, $3, $4, $5, $6, $7, $8::workspace_visibility, $9, $10)
+                            RETURNING id
+                        "#,
+                    )
                     .bind(workspace.id.value)
                     .bind(workspace.owner_user_id.value)
                     .bind(workspace.name)
@@ -81,10 +102,12 @@ impl WorkspaceWriter for WorkspaceGateway {
                     .fetch_one(tx.as_mut())
                     .await?;
 
-                let id: Uuid = row.try_get("id")?;
-                Ok(Id::new(id))
-            }.boxed()
-        }).await
+                    let id: Uuid = row.try_get("id")?;
+                    Ok(Id::new(id))
+                }
+                .boxed()
+            })
+            .await
     }
 
     async fn update(&self, workspace: Workspace) -> AppResult<()> {
@@ -154,7 +177,7 @@ impl WorkspaceWriter for WorkspaceGateway {
 
 #[async_trait]
 impl WorkspaceReader for WorkspaceGateway {
-    async fn get(&self, workspace_id: &Id<Workspace>) -> AppResult<Option<Workspace>> {
+    async fn get(&self, workspace_id: &Id<Workspace>) -> AppResult<Option<WorkspaceView>> {
         self.session
             .with_tx(|tx| {
                 let workspace_id = workspace_id.value;
@@ -162,17 +185,30 @@ impl WorkspaceReader for WorkspaceGateway {
                     let row = sqlx::query(
                         r#"
                             SELECT
-                                id,
-                                owner_user_id,
-                                name,
-                                description,
-                                slug,
-                                logo,
-                                primary_color,
-                                visibility::TEXT,
-                                created_at,
-                                updated_at
-                            FROM workspaces
+                                w.id,
+                                w.owner_user_id,
+                                w.name,
+                                w.description,
+                                w.slug,
+                                w.logo,
+                                w.primary_color,
+                                w.visibility::TEXT,
+                                w.created_at,
+                                w.updated_at,
+                                (
+                                    SELECT COUNT(user_id)
+                                    FROM (
+                                        SELECT owner_user_id AS user_id
+                                        FROM workspaces WHERE id = w.id
+                                        UNION
+                                        SELECT user_id FROM workspace_members
+                                        WHERE workspace_id = w.id AND status = 'active'
+                                    ) AS members
+                                ) AS total_members,
+                                (
+                                    SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
+                                ) AS total_projects
+                            FROM workspaces AS w
                             WHERE id = $1
                         "#,
                     )
@@ -181,7 +217,7 @@ impl WorkspaceReader for WorkspaceGateway {
                     .await?;
 
                     match row {
-                        Some(row) => Ok(Some(Self::get_workspace(&row)?)),
+                        Some(row) => Ok(Some(Self::get_workspace_view(&row)?)),
                         None => Ok(None),
                     }
                 }
@@ -189,7 +225,13 @@ impl WorkspaceReader for WorkspaceGateway {
             })
             .await
     }
-    async fn find_accessible_by_user(&self, user_id: &Id<User>, limit: i64, offset: i64) -> AppResult<Vec<Workspace>> {
+
+    async fn find_accessible_by_user(
+        &self,
+        user_id: &Id<User>,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<WorkspaceView>> {
         self.session
             .with_tx(|tx| {
                 let user_id = user_id.value;
@@ -206,7 +248,20 @@ impl WorkspaceReader for WorkspaceGateway {
                                 w.primary_color,
                                 w.visibility::TEXT,
                                 w.created_at,
-                                w.updated_at
+                                w.updated_at,
+                                (
+                                    SELECT COUNT(user_id)
+                                    FROM (
+                                        SELECT owner_user_id AS user_id
+                                        FROM workspaces WHERE id = w.id
+                                        UNION
+                                        SELECT user_id FROM workspace_members
+                                        WHERE workspace_id = w.id AND status = 'active'
+                                    ) AS members
+                                ) AS total_members,
+                                (
+                                    SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
+                                ) AS total_projects
                             FROM
                                 workspaces AS w
                             WHERE
@@ -230,7 +285,7 @@ impl WorkspaceReader for WorkspaceGateway {
                     .fetch_all(tx.as_mut())
                     .await?;
 
-                    rows.iter().map(Self::get_workspace).collect()
+                    rows.iter().map(Self::get_workspace_view).collect()
                 }
                 .boxed()
             })
@@ -248,7 +303,7 @@ impl WorkspaceReader for WorkspaceGateway {
                             FROM
                                 workspaces AS w
                             WHERE
-                                w.owner_user_id= $1
+                                w.owner_user_id = $1
                                 OR EXISTS(
                                     SELECT 1
                                     FROM
@@ -310,7 +365,7 @@ impl WorkspaceReader for WorkspaceGateway {
             .await
     }
 
-    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<Workspace>> {
+    async fn find_by_id_and_slug(&self, workspace_id: &Id<Workspace>, slug: &str) -> AppResult<Option<WorkspaceView>> {
         self.session
             .with_tx(|tx| {
                 let workspace_id = workspace_id.value;
@@ -319,18 +374,31 @@ impl WorkspaceReader for WorkspaceGateway {
                     let row = sqlx::query(
                         r#"
                             SELECT
-                                id,
-                                owner_user_id,
-                                name,
-                                description,
-                                slug,
-                                logo,
-                                primary_color,
-                                visibility::TEXT,
-                                updated_at,
-                                created_at
-                            FROM workspaces
-                            WHERE workspaces.id = $1 AND slug = $2
+                                w.id,
+                                w.owner_user_id,
+                                w.name,
+                                w.description,
+                                w.slug,
+                                w.logo,
+                                w.primary_color,
+                                w.visibility::TEXT,
+                                w.updated_at,
+                                w.created_at,
+                                (
+                                    SELECT COUNT(user_id)
+                                    FROM (
+                                        SELECT owner_user_id AS user_id
+                                        FROM workspaces WHERE id = w.id
+                                        UNION
+                                        SELECT user_id FROM workspace_members
+                                        WHERE workspace_id = w.id AND status = 'active'
+                                    ) AS members
+                                ) AS total_members,
+                                (
+                                    SELECT COUNT(id) FROM projects WHERE workspace_id = w.id
+                                ) AS total_projects
+                            FROM workspaces AS w
+                            WHERE w.id = $1 AND w.slug = $2
                         "#,
                     )
                     .bind(workspace_id)
@@ -339,7 +407,7 @@ impl WorkspaceReader for WorkspaceGateway {
                     .await?;
 
                     match row {
-                        Some(row) => Ok(Some(Self::get_workspace(&row)?)),
+                        Some(row) => Ok(Some(Self::get_workspace_view(&row)?)),
                         None => Ok(None),
                     }
                 }
@@ -385,7 +453,7 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                         INSERT INTO workspace_invites
                             (id, workspace_id, email, invite_token, invited_by, expires_at, accepted_at, revoked_at, created_at)
                         VALUES
-                            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                         RETURNING id
                     "#
                 )
