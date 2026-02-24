@@ -108,6 +108,9 @@ pub enum AppError {
 
     #[error("Invalid user role")]
     InvalidWorkspaceUserRole,
+
+    #[error("Project not found")]
+    ProjectNotFound,
 }
 
 pub type AppResult<T> = Result<T, AppError>;

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::Serialize;
 use serde_json::json;
 use utoipa::ToSchema;
@@ -40,6 +40,7 @@ impl IntoResponse for AppError {
             // NOT FOUND
             AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
             AppError::InviteNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
+            AppError::ProjectNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
 
             // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),
