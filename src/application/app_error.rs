@@ -102,6 +102,9 @@ pub enum AppError {
 
     #[error("Invalid project type value: '{0}'. Expected 'kanban' or 'scrum'.")]
     InvalidProjectType(String),
+
+    #[error("Project already exists")]
+    ProjectAlreadyExists,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
