@@ -677,7 +677,7 @@ impl WorkspaceMemberWriter for WorkspaceMemberGateway {
                             INSERT INTO workspace_members
                                 (id, workspace_id, user_id, role, joined_at, invited_by, status, created_at)
                             VALUES
-                                ($1, $2, $3, $4::workspace_member_role, now(), $5, 'active', now())
+                                ($1, $2, $3, $4::workspace_members_role, now(), $5, 'active', now())
                             RETURNING id
                         "#,
                     )
