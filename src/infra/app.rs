@@ -1,7 +1,7 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
 use axum::routing::{delete, get, patch, post, put};
-use axum::{Router, middleware};
+use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -33,6 +33,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
                 http::Method::GET,
                 http::Method::PATCH,
                 http::Method::DELETE,
+                http::Method::PUT,
             ])
             .allow_headers([CONTENT_TYPE, AUTHORIZATION]);
     }
@@ -98,7 +99,7 @@ pub fn workspace_router(state: AppState) -> Router<AppState> {
         .route("/{workspace_id}", patch(update_workspace))
         .route("/{workspace_id}", delete(delete_workspace))
         .route("/{workspace_id}/pin", put(set_workspace_pin))
-        .route("/{workspace_id}/pin", get(get_workspace_pin))
+        .route("/pin", get(get_workspace_pin))
         .route("/{workspace_id}/check-owner", get(check_workspace_owner))
         .route("/{workspace_id}/invites", post(invite_workspace_member))
         .route("/invites/accept", get(accept_workspace_invite))
