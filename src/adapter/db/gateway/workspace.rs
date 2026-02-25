@@ -1,20 +1,20 @@
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::postgres::PgRow;
 use sqlx::Row;
+use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::interface::gateway::workspace::{
-    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspaceReader,
-    WorkspaceWriter,
+    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspacePinReader,
+    WorkspacePinWriter, WorkspaceReader, WorkspaceWriter,
 };
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
 use crate::domain::entities::workspace::{
-    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspaceUserRole,
-    WorkspaceView, WorkspaceVisibility,
+    Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceMemberRole, WorkspaceMemberStatus, WorkspacePin,
+    WorkspaceUserRole, WorkspaceView, WorkspaceVisibility,
 };
 
 #[derive(Clone)]
@@ -488,17 +488,17 @@ impl WorkspaceInviteWriter for WorkspaceInviteGateway {
                         RETURNING id
                     "#
                 )
-                .bind(workspace_invite.id.value)
-                .bind(workspace_invite.workspace_id.value)
-                .bind(workspace_invite.email)
-                .bind(workspace_invite.invite_token)
-                .bind(workspace_invite.invited_by.value)
-                .bind(workspace_invite.expires_at)
-                .bind(workspace_invite.accepted_at)
-                .bind(workspace_invite.revoked_at)
-                .bind(workspace_invite.created_at)
-                .fetch_one(tx.as_mut())
-                .await?;
+                    .bind(workspace_invite.id.value)
+                    .bind(workspace_invite.workspace_id.value)
+                    .bind(workspace_invite.email)
+                    .bind(workspace_invite.invite_token)
+                    .bind(workspace_invite.invited_by.value)
+                    .bind(workspace_invite.expires_at)
+                    .bind(workspace_invite.accepted_at)
+                    .bind(workspace_invite.revoked_at)
+                    .bind(workspace_invite.created_at)
+                    .fetch_one(tx.as_mut())
+                    .await?;
 
                 let id: Uuid = row.try_get("id")?;
                 Ok(Id::new(id))
@@ -728,6 +728,82 @@ impl WorkspaceMemberReader for WorkspaceMemberGateway {
 
                     match row {
                         Some(row) => Ok(Some(Self::get_workspace_member(&row)?)),
+                        None => Ok(None),
+                    }
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[derive(Clone)]
+pub struct WorkspacePinGateway {
+    session: SqlxSession,
+}
+
+impl WorkspacePinGateway {
+    pub fn new(session: SqlxSession) -> Self {
+        Self { session }
+    }
+
+    fn get_workspace_pin(row: &PgRow) -> AppResult<WorkspacePin> {
+        Ok(WorkspacePin {
+            user_id: Id::new(row.try_get("user_id")?),
+            workspace_id: Id::new(row.try_get("workspace_id")?),
+        })
+    }
+}
+
+#[async_trait]
+impl WorkspacePinWriter for WorkspacePinGateway {
+    async fn set_workspace_pin(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<()> {
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                let user_id = user_id.value;
+                async move {
+                    sqlx::query(
+                        r#"
+                        INSERT INTO workspace_pins (workspace_id, user_id)
+                        VALUES ($1, $2)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            workspace_id = EXCLUDED.workspace_id
+                    "#,
+                    )
+                    .bind(workspace_id)
+                    .bind(user_id)
+                    .execute(tx.as_mut())
+                    .await?;
+
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await
+    }
+}
+
+#[async_trait]
+impl WorkspacePinReader for WorkspacePinGateway {
+    async fn get(&self, user_id: &Id<User>) -> AppResult<Option<WorkspacePin>> {
+        self.session
+            .with_tx(|tx| {
+                let user_id = user_id.value;
+                async move {
+                    let row = sqlx::query(
+                        r#"
+                        SELECT user_id, workspace_id
+                        FROM workspace_pins
+                        WHERE user_id = $1
+                    "#,
+                    )
+                    .bind(user_id)
+                    .fetch_optional(tx.as_mut())
+                    .await?;
+
+                    match row {
+                        Some(row) => Ok(Some(Self::get_workspace_pin(&row)?)),
                         None => Ok(None),
                     }
                 }
