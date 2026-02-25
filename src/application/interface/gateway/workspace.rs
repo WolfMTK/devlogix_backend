@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::application::app_error::AppResult;
 use crate::domain::entities::id::Id;
 use crate::domain::entities::user::User;
-use crate::domain::entities::workspace::{Workspace, WorkspaceInvite, WorkspaceMember, WorkspaceView};
+use crate::domain::entities::workspace::{Workspace, WorkspaceInvite, WorkspaceMember, WorkspacePin, WorkspaceView};
 
 #[async_trait]
 pub trait WorkspaceWriter: Send + Sync {
@@ -52,4 +52,14 @@ pub trait WorkspaceMemberWriter: Send + Sync {
 #[async_trait]
 pub trait WorkspaceMemberReader: Send + Sync {
     async fn get(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<Option<WorkspaceMember>>;
+}
+
+#[async_trait]
+pub trait WorkspacePinReader: Send + Sync {
+    async fn get(&self, user_id: &Id<User>) -> AppResult<Option<WorkspacePin>>;
+}
+
+#[async_trait]
+pub trait WorkspacePinWriter: Send + Sync {
+    async fn set_workspace_pin(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<()>;
 }
