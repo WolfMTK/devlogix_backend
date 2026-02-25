@@ -644,7 +644,7 @@ impl SetWorkspacePinInteractor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct GetWorkspacePinInteractor {
     workspace_pin_reader: Arc<dyn WorkspacePinReader>,
 }
