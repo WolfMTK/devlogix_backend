@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
+use axum::Json;
 use bytes::Bytes;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
@@ -893,457 +893,630 @@ pub async fn get_workspace_pin(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(test)]
-    mod tests {
-        use axum::body::Body;
-        use axum::http::{Request, StatusCode};
-        use http_body_util::BodyExt;
-        use rstest::rstest;
-        use serial_test::serial;
-        use tower::ServiceExt;
-        use uuid::Uuid;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use rstest::rstest;
+    use serial_test::serial;
+    use tower::ServiceExt;
+    use uuid::Uuid;
 
-        use crate::infra::app::create_app;
-        use crate::infra::state::AppState;
-        use crate::tests::fixtures::init_test_app_state;
-        use crate::tests::helpers::{
-            build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password,
-            insert_confirmed_user, insert_session, multipart_content_type, session_cookie, unique_credentials,
-        };
+    use crate::infra::app::create_app;
+    use crate::infra::state::AppState;
+    use crate::tests::fixtures::init_test_app_state;
+    use crate::tests::helpers::{build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password, insert_confirmed_user, insert_session, insert_workspace, multipart_content_type, session_cookie, unique_credentials};
 
-        // === create_workspace ===
-        fn get_request_create_workspace(fields: &[(&str, &str)], session_id: Uuid, cookie_name: &str) -> Request<Body> {
-            let body = build_multipart_body(fields);
-            Request::builder()
-                .method("POST")
-                .uri("/workspaces")
-                .header("content-type", multipart_content_type())
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::from(body))
-                .unwrap()
-        }
+    // === create_workspace ===
+    fn get_request_create_workspace(fields: &[(&str, &str)], session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        let body = build_multipart_body(fields);
+        Request::builder()
+            .method("POST")
+            .uri("/workspaces")
+            .header("content-type", multipart_content_type())
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::from(body))
+            .unwrap()
+    }
 
-        // Tests successful workspace creation
-        // Verifies:
-        // - Endpoint returns 200 OK with required and optional fields
-        // - Response JSON contains message "Workspace created successfully"
-        // - Created workspace appears in list with total >= 1
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_create_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+    // Tests successful workspace creation
+    // Verifies:
+    // - Endpoint returns 200 OK with required and optional fields
+    // - Response JSON contains message "Workspace created successfully"
+    // - Created workspace appears in list with total >= 1
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_create_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
 
-            let req = get_request_create_workspace(
-                &[
-                    ("name", "Test Workspace"),
-                    ("primary_color", "FF5733"),
-                    ("visibility", "private"),
-                    ("description", "A test description"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-
-            let resp = app.clone().oneshot(req).await.unwrap();
-            let status = resp.status();
-            let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
-            let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-
-            let list_req = get_request_list_workspaces(session_id, &cookie_name);
-            let list_resp = app.oneshot(list_req).await.unwrap();
-            let list_bytes: bytes::Bytes = list_resp.into_body().collect().await.unwrap().to_bytes();
-            let list_json: serde_json::Value = serde_json::from_slice(&list_bytes).unwrap();
-
-            delete_user(&state.pool, user_id).await;
-
-            assert_eq!(status, StatusCode::OK);
-            assert_eq!(json["message"], "Workspace created successfully");
-            let total = list_json["total"].as_i64().unwrap_or(0);
-            assert!(total >= 1, "at least one workspace expected, got total={total}");
-        }
-
-        // Tests that workspace creation fails with missing required fields
-        // Verifies:
-        // - Returns non-200 when 'name' is absent
-        // - Returns non-200 when 'visibility' is absent
-        #[rstest]
-        #[case(&[("primary_color", "FF5733"), ("visibility", "private")])]
-        #[case(&[("name", "Test"), ("primary_color", "000000")])]
-        #[tokio::test]
-        #[serial]
-        async fn test_create_workspace_missing_required_field(
-            #[case] fields: &[(&str, &str)],
-            #[future] init_test_app_state: anyhow::Result<AppState>,
-        ) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
-
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = &state.config.session.cookie_name;
-
-            let req = get_request_create_workspace(fields, session_id, cookie_name);
-            let status = app.oneshot(req).await.unwrap().status();
-
-            delete_user(&state.pool, user_id).await;
-
-            assert_ne!(status, StatusCode::OK);
-        }
-
-        // Tests that workspace creation fails for unauthenticated requests
-        // Verifies:
-        // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_create_workspace_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
-
-            let body = build_multipart_body(&[
-                ("name", "No Auth Workspace"),
+        let req = get_request_create_workspace(
+            &[
+                ("name", "Test Workspace"),
                 ("primary_color", "FF5733"),
                 ("visibility", "private"),
-            ]);
-            let req = Request::builder()
-                .method("POST")
-                .uri("/workspaces")
-                .header("content-type", multipart_content_type())
-                .body(Body::from(body))
-                .unwrap();
+                ("description", "A test description"),
+            ],
+            session_id,
+            &cookie_name,
+        );
 
-            assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
-        }
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-        // === list_workspaces ===
-        fn get_request_list_workspaces(session_id: Uuid, cookie_name: &str) -> Request<Body> {
-            Request::builder()
-                .method("GET")
-                .uri("/workspaces")
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::empty())
-                .unwrap()
-        }
+        let list_req = get_request_list_workspaces(session_id, &cookie_name);
+        let list_resp = app.oneshot(list_req).await.unwrap();
+        let list_bytes: bytes::Bytes = list_resp.into_body().collect().await.unwrap().to_bytes();
+        let list_json: serde_json::Value = serde_json::from_slice(&list_bytes).unwrap();
 
-        // Tests successful retrieval of workspace list
-        // Verifies:
-        // - Endpoint returns 200 OK
-        // - Response JSON contains 'items' array and 'total' number
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_list_workspaces(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        delete_user(&state.pool, user_id).await;
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = &state.config.session.cookie_name;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["message"], "Workspace created successfully");
+        let total = list_json["total"].as_i64().unwrap_or(0);
+        assert!(total >= 1, "at least one workspace expected, got total={total}");
+    }
 
-            let req = get_request_list_workspaces(session_id, cookie_name);
-            let resp = app.oneshot(req).await.unwrap();
-            let status = resp.status();
-            let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
-            let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    // Tests that workspace creation fails with missing required fields
+    // Verifies:
+    // - Returns non-200 when 'name' is absent
+    // - Returns non-200 when 'visibility' is absent
+    #[rstest]
+    #[case(&[("primary_color", "FF5733"), ("visibility", "private")])]
+    #[case(&[("name", "Test"), ("primary_color", "000000")])]
+    #[tokio::test]
+    #[serial]
+    async fn test_create_workspace_missing_required_field(
+        #[case] fields: &[(&str, &str)],
+        #[future] init_test_app_state: anyhow::Result<AppState>,
+    ) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            delete_user(&state.pool, user_id).await;
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
 
-            assert_eq!(status, StatusCode::OK);
-            assert!(json["items"].is_array(), "response must contain 'items' array");
-            assert!(json["total"].is_number(), "response must contain 'total' field");
-        }
+        let req = get_request_create_workspace(fields, session_id, cookie_name);
+        let status = app.oneshot(req).await.unwrap().status();
 
-        // Tests that workspace list fails for unauthenticated requests
-        // Verifies:
-        // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_list_workspaces_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        delete_user(&state.pool, user_id).await;
 
-            let req = Request::builder()
-                .method("GET")
-                .uri("/workspaces")
-                .body(Body::empty())
-                .unwrap();
+        assert_ne!(status, StatusCode::OK);
+    }
 
-            assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
-        }
+    // Tests that workspace creation fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_create_workspace_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-        // === delete_workspace ===
-        fn get_request_delete_workspace(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
-            Request::builder()
-                .method("DELETE")
-                .uri(format!("/workspaces/{}", workspace_id))
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::empty())
-                .unwrap()
-        }
+        let body = build_multipart_body(&[
+            ("name", "No Auth Workspace"),
+            ("primary_color", "FF5733"),
+            ("visibility", "private"),
+        ]);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/workspaces")
+            .header("content-type", multipart_content_type())
+            .body(Body::from(body))
+            .unwrap();
 
-        // Tests successful deletion of an existing workspace
-        // Verifies:
-        // - Endpoint returns 200 OK when deleting own workspace
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_delete_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+    // === list_workspaces ===
+    fn get_request_list_workspaces(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri("/workspaces")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
 
-            let create_req = get_request_create_workspace(
-                &[
-                    ("name", "To Delete"),
-                    ("primary_color", "E74C3C"),
-                    ("visibility", "private"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-            app.clone().oneshot(create_req).await.unwrap();
+    // Tests successful retrieval of workspace list
+    // Verifies:
+    // - Endpoint returns 200 OK
+    // - Response JSON contains 'items' array and 'total' number
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_list_workspaces(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            let delete_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
-                let req = get_request_delete_workspace(ws_id, session_id, &cookie_name);
-                app.oneshot(req).await.unwrap().status()
-            } else {
-                StatusCode::OK
-            };
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = &state.config.session.cookie_name;
 
-            delete_user(&state.pool, user_id).await;
+        let req = get_request_list_workspaces(session_id, cookie_name);
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-            assert_eq!(delete_status, StatusCode::OK);
-        }
+        delete_user(&state.pool, user_id).await;
 
-        // === check_workspace_owner ===
-        fn get_request_check_workspace_owner(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
-            Request::builder()
-                .method("GET")
-                .uri(format!("/workspaces/{}/check-owner", workspace_id))
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::empty())
-                .unwrap()
-        }
+        assert_eq!(status, StatusCode::OK);
+        assert!(json["items"].is_array(), "response must contain 'items' array");
+        assert!(json["total"].is_number(), "response must contain 'total' field");
+    }
 
-        // Tests that the owner check endpoint returns OK for the workspace creator
-        // Verifies:
-        // - Endpoint returns 200 OK when the authenticated user is the workspace owner
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_check_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+    // Tests that workspace list fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_list_workspaces_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/workspaces")
+            .body(Body::empty())
+            .unwrap();
 
-            let create_req = get_request_create_workspace(
-                &[
-                    ("name", "Owner Check WS"),
-                    ("primary_color", "1ABC9C"),
-                    ("visibility", "private"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-            app.clone().oneshot(create_req).await.unwrap();
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
 
-            let check_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
-                let req = get_request_check_workspace_owner(ws_id, session_id, &cookie_name);
-                app.oneshot(req).await.unwrap().status()
-            } else {
-                StatusCode::OK
-            };
+    // === delete_workspace ===
+    fn get_request_delete_workspace(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("DELETE")
+            .uri(format!("/workspaces/{}", workspace_id))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
 
-            delete_user(&state.pool, user_id).await;
+    // Tests successful deletion of an existing workspace
+    // Verifies:
+    // - Endpoint returns 200 OK when deleting own workspace
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            assert_eq!(check_status, StatusCode::OK);
-        }
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
 
-        // === get_workspace ===
-        fn get_request_get_workspace(
-            workspace_id: Uuid,
-            slug: &str,
-            session_id: Uuid,
-            cookie_name: &str,
-        ) -> Request<Body> {
-            Request::builder()
-                .method("GET")
-                .uri(format!("/workspaces/{}/{}", workspace_id, slug))
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::empty())
-                .unwrap()
-        }
+        let create_req = get_request_create_workspace(
+            &[
+                ("name", "To Delete"),
+                ("primary_color", "E74C3C"),
+                ("visibility", "private"),
+            ],
+            session_id,
+            &cookie_name,
+        );
+        app.clone().oneshot(create_req).await.unwrap();
 
-        // Tests retrieval of a workspace by its ID and slug
-        // Verifies:
-        // - Endpoint returns 200 OK when workspace exists and user is authenticated
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_get_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        let delete_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+            let req = get_request_delete_workspace(ws_id, session_id, &cookie_name);
+            app.oneshot(req).await.unwrap().status()
+        } else {
+            StatusCode::OK
+        };
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+        delete_user(&state.pool, user_id).await;
 
-            let create_req = get_request_create_workspace(
-                &[
-                    ("name", "Slug Test Workspace"),
-                    ("primary_color", "F39C12"),
-                    ("visibility", "private"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-            app.clone().oneshot(create_req).await.unwrap();
+        assert_eq!(delete_status, StatusCode::OK);
+    }
 
-            let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
-                let req = get_request_get_workspace(ws_id, &slug, session_id, &cookie_name);
-                app.oneshot(req).await.unwrap().status()
-            } else {
-                StatusCode::OK
-            };
+    // === check_workspace_owner ===
+    fn get_request_check_workspace_owner(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/workspaces/{}/check-owner", workspace_id))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
 
-            delete_user(&state.pool, user_id).await;
+    // Tests that the owner check endpoint returns OK for the workspace creator
+    // Verifies:
+    // - Endpoint returns 200 OK when the authenticated user is the workspace owner
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_check_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            assert_eq!(get_status, StatusCode::OK);
-        }
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
 
-        // === update_workspace ===
-        fn get_request_update_workspace(
-            workspace_id: Uuid,
-            fields: &[(&str, &str)],
-            session_id: Uuid,
-            cookie_name: &str,
-        ) -> Request<Body> {
-            let body = build_multipart_body(fields);
-            Request::builder()
-                .method("PATCH")
-                .uri(format!("/workspaces/{}", workspace_id))
-                .header("content-type", multipart_content_type())
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::from(body))
-                .unwrap()
-        }
+        let create_req = get_request_create_workspace(
+            &[
+                ("name", "Owner Check WS"),
+                ("primary_color", "1ABC9C"),
+                ("visibility", "private"),
+            ],
+            session_id,
+            &cookie_name,
+        );
+        app.clone().oneshot(create_req).await.unwrap();
 
-        // Tests successful update of workspace name
-        // Verifies:
-        // - Endpoint returns 200 OK when patching workspace with valid data
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_update_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        let check_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+            let req = get_request_check_workspace_owner(ws_id, session_id, &cookie_name);
+            app.oneshot(req).await.unwrap().status()
+        } else {
+            StatusCode::OK
+        };
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+        delete_user(&state.pool, user_id).await;
 
-            let create_req = get_request_create_workspace(
-                &[
-                    ("name", "Before Update"),
-                    ("primary_color", "8E44AD"),
-                    ("visibility", "private"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-            app.clone().oneshot(create_req).await.unwrap();
+        assert_eq!(check_status, StatusCode::OK);
+    }
 
-            let update_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
-                let req = get_request_update_workspace(ws_id, &[("name", "After Update")], session_id, &cookie_name);
-                app.oneshot(req).await.unwrap().status()
-            } else {
-                StatusCode::OK
-            };
+    // === get_workspace ===
+    fn get_request_get_workspace(workspace_id: Uuid, slug: &str, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/workspaces/{}/{}", workspace_id, slug))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
 
-            delete_user(&state.pool, user_id).await;
+    // Tests retrieval of a workspace by its ID and slug
+    // Verifies:
+    // - Endpoint returns 200 OK when workspace exists and user is authenticated
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            assert_eq!(update_status, StatusCode::OK);
-        }
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
 
-        // === get_workspace_owner ===
-        fn get_request_get_workspace_owner(
-            workspace_id: Uuid,
-            slug: &str,
-            session_id: Uuid,
-            cookie_name: &str,
-        ) -> Request<Body> {
-            Request::builder()
-                .method("GET")
-                .uri(format!("/workspaces/{}/{}/owner", workspace_id, slug))
-                .header("cookie", session_cookie(session_id, cookie_name))
-                .body(Body::empty())
-                .unwrap()
-        }
+        let create_req = get_request_create_workspace(
+            &[
+                ("name", "Slug Test Workspace"),
+                ("primary_color", "F39C12"),
+                ("visibility", "private"),
+            ],
+            session_id,
+            &cookie_name,
+        );
+        app.clone().oneshot(create_req).await.unwrap();
 
-        // Tests retrieval of workspace owner info
-        // Verifies:
-        // - Endpoint returns 200 OK when workspace exists and user is authenticated
-        #[rstest]
-        #[tokio::test]
-        #[serial]
-        async fn test_get_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
-            let state = init_test_app_state.await.expect("init app state");
-            let app = create_app(state.config.as_ref(), state.clone());
+        let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
+            let req = get_request_get_workspace(ws_id, &slug, session_id, &cookie_name);
+            app.oneshot(req).await.unwrap().status()
+        } else {
+            StatusCode::OK
+        };
 
-            let (username, email) = unique_credentials();
-            let hashed = hash_password(&state, "Password123!").await;
-            let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
-            let session_id = insert_session(&state.pool, user_id).await;
-            let cookie_name = state.config.session.cookie_name.clone();
+        delete_user(&state.pool, user_id).await;
 
-            let create_req = get_request_create_workspace(
-                &[
-                    ("name", "Owner Info Workspace"),
-                    ("primary_color", "16A085"),
-                    ("visibility", "public"),
-                ],
-                session_id,
-                &cookie_name,
-            );
-            app.clone().oneshot(create_req).await.unwrap();
+        assert_eq!(get_status, StatusCode::OK);
+    }
 
-            let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
-                let req = get_request_get_workspace_owner(ws_id, &slug, session_id, &cookie_name);
-                app.oneshot(req).await.unwrap().status()
-            } else {
-                StatusCode::OK
-            };
+    // === update_workspace ===
+    fn get_request_update_workspace(
+        workspace_id: Uuid,
+        fields: &[(&str, &str)],
+        session_id: Uuid,
+        cookie_name: &str,
+    ) -> Request<Body> {
+        let body = build_multipart_body(fields);
+        Request::builder()
+            .method("PATCH")
+            .uri(format!("/workspaces/{}", workspace_id))
+            .header("content-type", multipart_content_type())
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::from(body))
+            .unwrap()
+    }
 
-            delete_user(&state.pool, user_id).await;
+    // Tests successful update of workspace name
+    // Verifies:
+    // - Endpoint returns 200 OK when patching workspace with valid data
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_update_workspace(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
 
-            assert_eq!(get_status, StatusCode::OK);
-        }
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let create_req = get_request_create_workspace(
+            &[
+                ("name", "Before Update"),
+                ("primary_color", "8E44AD"),
+                ("visibility", "private"),
+            ],
+            session_id,
+            &cookie_name,
+        );
+        app.clone().oneshot(create_req).await.unwrap();
+
+        let update_status = if let Some(ws_id) = find_workspace_id(&state.pool, user_id).await {
+            let req = get_request_update_workspace(ws_id, &[("name", "After Update")], session_id, &cookie_name);
+            app.oneshot(req).await.unwrap().status()
+        } else {
+            StatusCode::OK
+        };
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(update_status, StatusCode::OK);
+    }
+
+    // === get_workspace_owner ===
+    fn get_request_get_workspace_owner(
+        workspace_id: Uuid,
+        slug: &str,
+        session_id: Uuid,
+        cookie_name: &str,
+    ) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/workspaces/{}/{}/owner", workspace_id, slug))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests retrieval of workspace owner info
+    // Verifies:
+    // - Endpoint returns 200 OK when workspace exists and user is authenticated
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace_owner(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let create_req = get_request_create_workspace(
+            &[
+                ("name", "Owner Info Workspace"),
+                ("primary_color", "16A085"),
+                ("visibility", "public"),
+            ],
+            session_id,
+            &cookie_name,
+        );
+        app.clone().oneshot(create_req).await.unwrap();
+
+        let get_status = if let Some((ws_id, slug)) = find_workspace_id_and_slug(&state.pool, user_id).await {
+            let req = get_request_get_workspace_owner(ws_id, &slug, session_id, &cookie_name);
+            app.oneshot(req).await.unwrap().status()
+        } else {
+            StatusCode::OK
+        };
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(get_status, StatusCode::OK);
+    }
+
+    // === set_workspace_pin ===
+    fn get_request_set_workspace_pin(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("PUT")
+            .uri(format!("/workspaces/{}/pin", workspace_id))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests successful pinning of a workspace
+    // Verifies:
+    // - Endpoint returns 200 OK when pinning own workspace
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_set_workspace_pin(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let ws_id = insert_workspace(&state.pool, user_id, "Pin Test Workspace").await;
+
+        let req = get_request_set_workspace_pin(ws_id, session_id, &cookie_name);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["message"], "Workspace set as current");
+    }
+
+    // Tests that set_workspace_pin fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_set_workspace_pin_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/workspaces/{}/pin", Uuid::now_v7()))
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // == get_workspace_pin ===
+    fn get_request_get_workspace_pin(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri("/workspaces/pin")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests that pinning replaces the previous pin
+    // Verifies:
+    // - After pinning second workspace, get_workspace_pin returns the new one
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_set_workspace_pin_replaces_previous(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let ws_id_first = insert_workspace(&state.pool, user_id, "First Workspace").await;
+        let ws_id_second = insert_workspace(&state.pool, user_id, "Second Workspace").await;
+
+        app.clone()
+            .oneshot(get_request_set_workspace_pin(ws_id_first, session_id, &cookie_name))
+            .await
+            .unwrap();
+
+        app.clone()
+            .oneshot(get_request_set_workspace_pin(ws_id_second, session_id, &cookie_name))
+            .await
+            .unwrap();
+
+        let resp = app.oneshot(get_request_get_workspace_pin(session_id, &cookie_name)).await.unwrap();
+        let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(json["id"], ws_id_second.to_string());
+    }
+
+    // Tests successful retrieval of the pinned workspace
+    // Verifies:
+    // - Endpoint returns 200 OK with the correct workspace ID after pinning
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace_pin(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let ws_id = insert_workspace(&state.pool, user_id, "Get Pin Workspace").await;
+
+        app.clone()
+            .oneshot(get_request_set_workspace_pin(ws_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+
+        let resp = app.oneshot(get_request_get_workspace_pin(session_id, &cookie_name)).await.unwrap();
+        let status = resp.status();
+        let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["id"], ws_id.to_string());
+    }
+
+    // Tests that get_workspace_pin returns 404 when no pin is set
+    // Verifies:
+    // - Endpoint returns 404 NOT FOUND when user has no pinned workspace
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace_pin_not_found(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let req = get_request_get_workspace_pin(session_id, &cookie_name);
+        let status = app.oneshot(req).await.unwrap().status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    // Tests that get_workspace_pin fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace_pin_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/workspaces/pin")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
     }
 }
