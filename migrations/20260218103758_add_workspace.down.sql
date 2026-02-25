@@ -3,7 +3,6 @@ DROP TABLE IF EXISTS workspace_invites;
 DROP TABLE IF EXISTS workspace_members;
 DROP TABLE IF EXISTS workspaces;
 
-DROP TYPE IF EXISTS workspace_invite_status;
 DROP TYPE IF EXISTS workspace_members_status;
 DROP TYPE IF EXISTS workspace_members_role;
 DROP TYPE IF EXISTS workspace_visibility;
