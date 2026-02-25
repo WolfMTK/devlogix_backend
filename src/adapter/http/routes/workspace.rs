@@ -1373,7 +1373,7 @@ mod tests {
         delete_user(&state.pool, user_id).await;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["message"], "Workspace set as current");
+        assert_eq!(json["message"], "Workspace pinned successfully");
     }
 
     // Tests that set_workspace_pin fails for unauthenticated requests
