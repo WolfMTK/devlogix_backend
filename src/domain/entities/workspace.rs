@@ -195,6 +195,7 @@ pub struct WorkspaceView {
 
 #[derive(Debug, Clone)]
 pub struct WorkspacePin {
+    #[allow(dead_code)]
     pub user_id: Id<User>,
     pub workspace_id: Id<Workspace>,
 }
