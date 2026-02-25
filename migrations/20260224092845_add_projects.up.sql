@@ -3,7 +3,7 @@ CREATE TYPE projects_visibility AS ENUM('private', 'public');
 
 CREATE TYPE projects_type_project AS ENUM('kanban', 'scrum');
 
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT uuidv7(),
   workspace_id UUID NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
   name VARCHAR(120) NOT NULL,
@@ -16,6 +16,6 @@ CREATE TABLE projects (
   UNIQUE (workspace_id, project_key)
 );
 
-CREATE INDEX idx_projects_workspace_id ON projects (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_projects_workspace_id ON projects (workspace_id);
 
-CREATE INDEX idx_projects_project_key ON projects (project_key);
+CREATE INDEX IF NOT EXISTS idx_projects_project_key ON projects (project_key);
