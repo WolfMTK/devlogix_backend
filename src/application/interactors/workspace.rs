@@ -3,18 +3,19 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::id::IdDTO;
 use crate::application::dto::user::UserDTO;
 use crate::application::dto::workspace::{
     AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceDTO,
-    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO, WorkspaceDTO,
-    WorkspaceListDTO, WorkspaceLogoDTO,
+    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, SetWorkspacePinDTO, UpdateWorkspaceDTO,
+    WorkspaceDTO, WorkspaceListDTO, WorkspaceLogoDTO,
 };
 use crate::application::interface::db::DBSession;
 use crate::application::interface::email::EmailSender;
 use crate::application::interface::gateway::user::UserReader;
 use crate::application::interface::gateway::workspace::{
-    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspaceReader,
-    WorkspaceWriter,
+    WorkspaceInviteReader, WorkspaceInviteWriter, WorkspaceMemberReader, WorkspaceMemberWriter, WorkspacePinReader,
+    WorkspacePinWriter, WorkspaceReader, WorkspaceWriter,
 };
 use crate::application::interface::s3::StorageClient;
 use crate::domain::entities::id::Id;
@@ -598,5 +599,72 @@ impl GetOwnerWorkspaceInteractor {
             }),
             None => Err(AppError::AccessDenied),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct SetWorkspacePinInteractor {
+    db_session: Arc<dyn DBSession>,
+    workspace_reader: Arc<dyn WorkspaceReader>,
+    workspace_pin_writer: Arc<dyn WorkspacePinWriter>,
+}
+
+impl SetWorkspacePinInteractor {
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        workspace_reader: Arc<dyn WorkspaceReader>,
+        workspace_pin_writer: Arc<dyn WorkspacePinWriter>,
+    ) -> Self {
+        Self {
+            db_session,
+            workspace_reader,
+            workspace_pin_writer,
+        }
+    }
+
+    pub async fn execute(&self, dto: SetWorkspacePinDTO) -> AppResult<()> {
+        let user_id: Id<User> = dto.user_id.try_into()?;
+        let workspace_id: Id<Workspace> = dto.workspace_id.try_into()?;
+
+        let accessible = self
+            .workspace_reader
+            .is_accessible_by_user(&workspace_id, &user_id)
+            .await?;
+
+        if !accessible {
+            return Err(AppError::AccessDenied);
+        }
+
+        self.workspace_pin_writer
+            .set_workspace_pin(&workspace_id, &user_id)
+            .await?;
+        self.db_session.commit().await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct GetWorkspacePinInteractor {
+    workspace_pin_reader: Arc<dyn WorkspacePinReader>,
+}
+
+impl GetWorkspacePinInteractor {
+    pub fn new(workspace_pin_reader: Arc<dyn WorkspacePinReader>) -> Self {
+        Self { workspace_pin_reader }
+    }
+
+    pub async fn execute(&self, dto: IdDTO) -> AppResult<IdDTO> {
+        let user_id = dto.id.try_into()?;
+
+        let workspace_pin = self
+            .workspace_pin_reader
+            .get(&user_id)
+            .await?
+            .ok_or(AppError::WorkspacePinNotFound)?;
+
+        Ok(IdDTO {
+            id: workspace_pin.workspace_id.value.to_string(),
+        })
     }
 }
