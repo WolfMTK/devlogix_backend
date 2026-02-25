@@ -11,6 +11,7 @@ use bytes::Bytes;
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::MessageResponse;
+use crate::adapter::http::schema::id::IdResponse;
 use crate::adapter::http::schema::pagination::PaginationQuery;
 use crate::adapter::http::schema::user::GetUserResponse;
 use crate::adapter::http::schema::workspace::{
@@ -18,14 +19,16 @@ use crate::adapter::http::schema::workspace::{
     WorkspaceListResponse,
 };
 use crate::application::app_error::{AppError, AppResult};
+use crate::application::dto::id::IdDTO;
 use crate::application::dto::workspace::{
     AcceptWorkspaceInviteDTO, CheckWorkspaceOwnerDTO, CreateWorkspaceDTO, DeleteWorkspaceDTO, GetWorkspaceDTO,
-    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, UpdateWorkspaceDTO,
+    GetWorkspaceListDTO, GetWorkspaceLogoDTO, InviteWorkspaceMemberDTO, SetWorkspacePinDTO, UpdateWorkspaceDTO,
 };
 use crate::application::interactors::workspace::{
     AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
     DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
-    GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+    GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor, SetWorkspacePinInteractor,
+    UpdateWorkspaceInteractor,
 };
 use crate::infra::config::AppConfig;
 
@@ -785,6 +788,34 @@ pub async fn get_owner_workspace(
             updated_at: user.updated_at,
         }),
     ))
+}
+
+pub async fn set_workspace_pin(
+    auth_user: AuthUser,
+    interactor: SetWorkspacePinInteractor,
+    Path(workspace_id): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let dto = SetWorkspacePinDTO {
+        user_id: auth_user.user_id,
+        workspace_id: workspace_id,
+    };
+    interactor.execute(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(MessageResponse {
+            message: "Workspace pinned successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn get_workspace_pin(
+    auth_user: AuthUser,
+    interactor: GetWorkspacePinInteractor,
+) -> AppResult<impl IntoResponse> {
+    let dto = IdDTO { id: auth_user.user_id };
+    let workspace_pin = interactor.execute(dto).await?;
+    Ok((StatusCode::OK, Json(IdResponse { id: workspace_pin.id })))
 }
 
 #[cfg(test)]

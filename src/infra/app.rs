@@ -1,6 +1,6 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Router, middleware};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -16,7 +16,8 @@ use crate::adapter::http::routes::project::create_project;
 use crate::adapter::http::routes::user::{get_me, register, update_user};
 use crate::adapter::http::routes::workspace::{
     accept_workspace_invite, check_workspace_owner, create_workspace, delete_workspace, get_owner_workspace,
-    get_workspace, get_workspace_list, get_workspace_logo, invite_workspace_member, update_workspace,
+    get_workspace, get_workspace_list, get_workspace_logo, get_workspace_pin, invite_workspace_member,
+    set_workspace_pin, update_workspace,
 };
 use crate::infra::config::AppConfig;
 use crate::infra::state::AppState;
@@ -55,6 +56,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
             http::Method::GET,
             http::Method::PATCH,
             http::Method::DELETE,
+            http::Method::PUT,
         ])
         .allow_headers([CONTENT_TYPE, AUTHORIZATION])
         .allow_credentials(true)
@@ -95,6 +97,8 @@ pub fn workspace_router(state: AppState) -> Router<AppState> {
         .route("/{workspace_id}/{slug}/owner", get(get_owner_workspace))
         .route("/{workspace_id}", patch(update_workspace))
         .route("/{workspace_id}", delete(delete_workspace))
+        .route("/{workspace_id}/pin", put(set_workspace_pin))
+        .route("/{workspace_id}/pin", get(get_workspace_pin))
         .route("/{workspace_id}/check-owner", get(check_workspace_owner))
         .route("/{workspace_id}/invites", post(invite_workspace_member))
         .route("/invites/accept", get(accept_workspace_invite))
