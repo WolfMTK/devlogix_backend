@@ -790,6 +790,47 @@ pub async fn get_owner_workspace(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/workspaces/{workspace_id}/pin",
+    tag = "Workspaces",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID to pin"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Workspace pinned",
+            body = MessageResponse,
+            example = json!({ "message": "Workspace set as current" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "Forbidden",
+            body = ErrorResponse,
+            example = json!({ "error": "Forbidden" })
+        ),
+        (
+            status = 404,
+            description = "Workspace not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn set_workspace_pin(
     auth_user: AuthUser,
     interactor: SetWorkspacePinInteractor,
@@ -809,6 +850,38 @@ pub async fn set_workspace_pin(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/workspaces/pin",
+    tag = "Workspaces",
+    responses(
+        (
+            status = 200,
+            description = "Pinned workspace ID",
+            body = IdResponse,
+            example = json!({ "id": "0191f1d3-7bcb-7f2d-b74a-8a6826c8761a" })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 404,
+            description = "No pinned workspace",
+            body = ErrorResponse,
+            example = json!({ "error": "Workspace pin not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_workspace_pin(
     auth_user: AuthUser,
     interactor: GetWorkspacePinInteractor,

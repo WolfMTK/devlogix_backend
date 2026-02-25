@@ -52,6 +52,8 @@ impl Modify for SecurityAddon {
         workspace::invite_workspace_member,
         workspace::accept_workspace_invite,
         workspace::get_workspace_logo,
+        workspace::set_workspace_pin,
+        workspace::get_workspace_pin,
         project::create_project
     ),
     components(
