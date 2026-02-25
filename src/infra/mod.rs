@@ -11,10 +11,10 @@ use crate::infra::state::AppState;
 
 pub mod app;
 pub mod config;
+pub mod constants;
 pub mod db;
 pub mod setup;
 pub mod state;
-pub mod constants;
 
 pub fn argon2_password_hasher() -> ArgonPasswordHasher {
     ArgonPasswordHasher::default()
