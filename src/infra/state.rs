@@ -10,7 +10,9 @@ use crate::adapter::db::gateway::password_reset::PasswordResetTokenGateway;
 use crate::adapter::db::gateway::project::ProjectGateway;
 use crate::adapter::db::gateway::session::SessionGateway;
 use crate::adapter::db::gateway::user::UserGateway;
-use crate::adapter::db::gateway::workspace::{WorkspaceGateway, WorkspaceInviteGateway, WorkspaceMemberGateway};
+use crate::adapter::db::gateway::workspace::{
+    WorkspaceGateway, WorkspaceInviteGateway, WorkspaceMemberGateway, WorkspacePinGateway,
+};
 use crate::adapter::db::session::SqlxSession;
 use crate::application::app_error::{AppError, AppResult};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
@@ -22,7 +24,8 @@ use crate::application::interactors::users::{CreateUserInteractor, GetMeInteract
 use crate::application::interactors::workspace::{
     AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
     DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
-    GetWorkspaceLogoInteractor, InviteWorkspaceMemberInteractor, UpdateWorkspaceInteractor,
+    GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor, SetWorkspacePinInteractor,
+    UpdateWorkspaceInteractor,
 };
 use crate::application::interface::crypto::CredentialsHasher;
 use crate::application::interface::email::EmailSender;
@@ -636,5 +639,58 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         CreateProjectInteractor::from_app_state(&app_state).await
+    }
+}
+
+// SetWorkspacePinInteractor
+#[async_trait]
+impl FromAppState for SetWorkspacePinInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let workspace_pin_gateway = WorkspacePinGateway::new(session.clone());
+
+        Ok(SetWorkspacePinInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            Arc::new(workspace_pin_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for SetWorkspacePinInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        SetWorkspacePinInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetWorkspacePinInteractor
+#[async_trait]
+impl FromAppState for GetWorkspacePinInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_pin_gateway = WorkspacePinGateway::new(session);
+
+        Ok(GetWorkspacePinInteractor::new(Arc::new(workspace_pin_gateway)))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetWorkspacePinInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetWorkspacePinInteractor::from_app_state(&app_state).await
     }
 }
