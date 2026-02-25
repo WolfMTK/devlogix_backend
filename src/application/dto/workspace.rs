@@ -100,3 +100,9 @@ pub struct GetWorkspaceDTO {
     pub workspace_id: String,
     pub slug: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct SetWorkspacePinDTO {
+    pub user_id: String,
+    pub workspace_id: String,
+}
