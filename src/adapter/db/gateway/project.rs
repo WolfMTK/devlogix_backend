@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::postgres::PgRow;
 use sqlx::Row;
+use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
@@ -23,10 +23,14 @@ impl ProjectGateway {
 
     fn get_project(row: &PgRow) -> AppResult<Project> {
         let type_project_str: String = row.try_get("type_project")?;
-        let type_project = type_project_str.parse::<ProjectType>().map_err(|_| AppError::InvalidProjectType(type_project_str))?;
+        let type_project = type_project_str
+            .parse::<ProjectType>()
+            .map_err(|_| AppError::InvalidProjectType(type_project_str))?;
 
         let visibility_str: String = row.try_get("visibility")?;
-        let visibility = visibility_str.parse::<ProjectVisibility>().map_err(|_| AppError::InvalidVisibility(visibility_str))?;
+        let visibility = visibility_str
+            .parse::<ProjectVisibility>()
+            .map_err(|_| AppError::InvalidVisibility(visibility_str))?;
 
         Ok({
             Project {
@@ -38,7 +42,7 @@ impl ProjectGateway {
                 type_project,
                 visibility,
                 updated_at: row.try_get("updated_at")?,
-                created_at: row.try_get("created_at")?
+                created_at: row.try_get("created_at")?,
             }
         })
     }
@@ -127,11 +131,12 @@ impl ProjectReader for ProjectGateway {
     }
 
     async fn get_all(&self, workspace_id: &Id<Workspace>, limit: i64, offset: i64) -> AppResult<Vec<Project>> {
-        self.session.with_tx(|tx| {
-            let workspace_id = workspace_id.value;
-            async move {
-                let rows = sqlx::query(
-                    r#"
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                async move {
+                    let rows = sqlx::query(
+                        r#"
                             SELECT
                                 id,
                                 workspace_id,
@@ -145,45 +150,51 @@ impl ProjectReader for ProjectGateway {
                             FROM projects
                             WHERE id = $1
                             LIMIT $2 OFFSET $3
-                    "#
-                )
+                    "#,
+                    )
                     .bind(workspace_id)
                     .bind(limit)
                     .bind(offset)
                     .fetch_all(tx.as_mut())
                     .await?;
 
-                rows.iter().map(Self::get_project).collect()
-            }.boxed()
-        }).await
+                    rows.iter().map(Self::get_project).collect()
+                }
+                .boxed()
+            })
+            .await
     }
     async fn count_projects(&self, workspace_id: &Id<Workspace>) -> AppResult<i64> {
-        self.session.with_tx(|tx| {
-            let workspace_id = workspace_id.value;
-            async move {
-                let row = sqlx::query(
-                    r#"
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                async move {
+                    let row = sqlx::query(
+                        r#"
                         SELECT COUNT(id) AS total
                         FROM projects
                         WHERE workspace_id = $1
-                    "#
-                )
+                    "#,
+                    )
                     .bind(workspace_id)
                     .fetch_one(tx.as_mut())
                     .await?;
 
-                Ok(row.try_get("total")?)
-            }.boxed()
-        }).await
+                    Ok(row.try_get("total")?)
+                }
+                .boxed()
+            })
+            .await
     }
 
     async fn get(&self, workspace_id: &Id<Workspace>, project_id: &Id<Project>) -> AppResult<Option<Project>> {
-        self.session.with_tx(|tx| {
-            let workspace_id = workspace_id.value;
-            let project_id = project_id.value;
-            async move {
-                let row = sqlx::query(
-                    r#"
+        self.session
+            .with_tx(|tx| {
+                let workspace_id = workspace_id.value;
+                let project_id = project_id.value;
+                async move {
+                    let row = sqlx::query(
+                        r#"
                         SELECT
                             id,
                             workspace_id,
@@ -196,18 +207,20 @@ impl ProjectReader for ProjectGateway {
                             updated_at
                         FROM projects
                         WHERE workspace_id = $1 AND id = $2
-                    "#
-                )
+                    "#,
+                    )
                     .bind(workspace_id)
                     .bind(project_id)
                     .fetch_optional(tx.as_mut())
                     .await?;
 
-                match row {
-                    Some(row) => Ok(Some(Self::get_project(&row)?)),
-                    None => Ok(None)
+                    match row {
+                        Some(row) => Ok(Some(Self::get_project(&row)?)),
+                        None => Ok(None),
+                    }
                 }
-            }.boxed()
-        }).await
+                .boxed()
+            })
+            .await
     }
 }
