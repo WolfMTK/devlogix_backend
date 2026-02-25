@@ -191,3 +191,27 @@ impl GetProjectInteractor {
         })
     }
 }
+
+#[derive(Clone)]
+struct UpdateProjectInteractor {
+    db_session: Arc<dyn DBSession>,
+    workspace_reader: Arc<dyn WorkspaceReader>,
+    project_reader: Arc<dyn ProjectReader>,
+    project_writer: Arc<dyn ProjectWriter>,
+}
+
+impl UpdateProjectInteractor {
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        workspace_reader: Arc<dyn WorkspaceReader>,
+        project_reader: Arc<dyn ProjectReader>,
+        project_writer: Arc<dyn ProjectWriter>,
+    ) -> Self {
+        Self {
+            db_session,
+            workspace_reader,
+            project_reader,
+            project_writer,
+        }
+    }
+}
