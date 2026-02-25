@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS projects (
   name VARCHAR(120) NOT NULL,
   description TEXT,
   project_key VARCHAR(10) NOT NULL,
-  type_project projects_type_project DEFAULT 'kanban',
+  type_project projects_type_project NOT NULL DEFAULT 'kanban',
   visibility projects_visibility NOT NULL DEFAULT 'private',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
