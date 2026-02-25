@@ -46,3 +46,14 @@ pub struct GetProjectDTO {
     pub workspace_id: String,
     pub project_id: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct UpdateProjectDTO {
+    pub user_id: String,
+    pub workspace_id: String,
+    pub project_id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub type_project: Option<String>,
+    pub visibility: Option<String>,
+}
