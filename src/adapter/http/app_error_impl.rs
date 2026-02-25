@@ -41,6 +41,7 @@ impl IntoResponse for AppError {
             AppError::StorageNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
             AppError::InviteNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
             AppError::ProjectNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
+            AppError::WorkspacePinNotFound => (StatusCode::NOT_FOUND, Some(self.to_string())),
 
             // FORBIDDEN
             AppError::EmailNotConfirmed => (StatusCode::FORBIDDEN, Some(self.to_string())),

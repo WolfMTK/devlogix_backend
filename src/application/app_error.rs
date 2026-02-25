@@ -111,6 +111,9 @@ pub enum AppError {
 
     #[error("Project not found")]
     ProjectNotFound,
+
+    #[error("Workspace pin not found")]
+    WorkspacePinNotFound,
 }
 
 pub type AppResult<T> = Result<T, AppError>;
