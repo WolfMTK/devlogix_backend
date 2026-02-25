@@ -193,6 +193,12 @@ pub struct WorkspaceView {
     pub user_role: WorkspaceUserRole,
 }
 
+#[derive(Debug, Clone)]
+pub struct WorkspacePin {
+    pub user_id: Id<User>,
+    pub workspace_id: Id<Workspace>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
