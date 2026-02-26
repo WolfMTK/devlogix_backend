@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
-use axum::Json;
 use bytes::Bytes;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
@@ -26,9 +26,9 @@ use crate::application::dto::workspace::{
 };
 use crate::application::interactors::workspace::{
     AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
-    DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
-    GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor, SetWorkspacePinInteractor,
-    UpdateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, DeleteWorkspacePinInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor,
+    GetWorkspaceListInteractor, GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor,
+    SetWorkspacePinInteractor, UpdateWorkspaceInteractor,
 };
 use crate::infra::config::AppConfig;
 
@@ -891,6 +891,16 @@ pub async fn get_workspace_pin(
     Ok((StatusCode::OK, Json(IdResponse { id: workspace_pin.id })))
 }
 
+pub async fn delete_workspace_pin(
+    auth_user: AuthUser,
+    interactor: DeleteWorkspacePinInteractor,
+) -> AppResult<impl IntoResponse> {
+    let dto = IdDTO { id: auth_user.user_id };
+    interactor.execute(dto).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -904,7 +914,11 @@ mod tests {
     use crate::infra::app::create_app;
     use crate::infra::state::AppState;
     use crate::tests::fixtures::init_test_app_state;
-    use crate::tests::helpers::{build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password, insert_confirmed_user, insert_session, insert_workspace, multipart_content_type, session_cookie, unique_credentials};
+    use crate::tests::helpers::{
+        build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password,
+        insert_confirmed_user, insert_session, insert_workspace, multipart_content_type, session_cookie,
+        unique_credentials,
+    };
 
     // === create_workspace ===
     fn get_request_create_workspace(fields: &[(&str, &str)], session_id: Uuid, cookie_name: &str) -> Request<Body> {
@@ -1434,7 +1448,10 @@ mod tests {
             .await
             .unwrap();
 
-        let resp = app.oneshot(get_request_get_workspace_pin(session_id, &cookie_name)).await.unwrap();
+        let resp = app
+            .oneshot(get_request_get_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap();
         let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
@@ -1466,7 +1483,10 @@ mod tests {
             .await
             .unwrap();
 
-        let resp = app.oneshot(get_request_get_workspace_pin(session_id, &cookie_name)).await.unwrap();
+        let resp = app
+            .oneshot(get_request_get_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap();
         let status = resp.status();
         let bytes: bytes::Bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
