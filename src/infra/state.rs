@@ -23,9 +23,9 @@ use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 use crate::application::interactors::workspace::{
     AcceptWorkspaceInviteInteractor, CheckWorkspaceOwnerInteractor, CreateWorkspaceInteractor,
-    DeleteWorkspaceInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor, GetWorkspaceListInteractor,
-    GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor, SetWorkspacePinInteractor,
-    UpdateWorkspaceInteractor,
+    DeleteWorkspaceInteractor, DeleteWorkspacePinInteractor, GetOwnerWorkspaceInteractor, GetWorkspaceInteractor,
+    GetWorkspaceListInteractor, GetWorkspaceLogoInteractor, GetWorkspacePinInteractor, InviteWorkspaceMemberInteractor,
+    SetWorkspacePinInteractor, UpdateWorkspaceInteractor,
 };
 use crate::application::interface::crypto::CredentialsHasher;
 use crate::application::interface::email::EmailSender;
@@ -676,9 +676,15 @@ where
 impl FromAppState for GetWorkspacePinInteractor {
     async fn from_app_state(state: &AppState) -> AppResult<Self> {
         let session = SqlxSession::new_lazy(state.pool.clone());
-        let workspace_pin_gateway = WorkspacePinGateway::new(session);
+        let workspace_gateway = WorkspaceGateway::new(session.clone());
+        let workspace_pin_gateway = WorkspacePinGateway::new(session.clone());
 
-        Ok(GetWorkspacePinInteractor::new(Arc::new(workspace_pin_gateway)))
+        Ok(GetWorkspacePinInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_gateway),
+            Arc::new(workspace_pin_gateway.clone()),
+            Arc::new(workspace_pin_gateway),
+        ))
     }
 }
 
@@ -692,5 +698,32 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         GetWorkspacePinInteractor::from_app_state(&app_state).await
+    }
+}
+
+// DeleteWorkspacePinInteractor
+#[async_trait]
+impl FromAppState for DeleteWorkspacePinInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace_pin_gateway = WorkspacePinGateway::new(session.clone());
+
+        Ok(DeleteWorkspacePinInteractor::new(
+            Arc::new(session),
+            Arc::new(workspace_pin_gateway),
+        ))
+    }
+}
+
+impl<S> FromRequestParts<S> for DeleteWorkspacePinInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        DeleteWorkspacePinInteractor::from_app_state(&app_state).await
     }
 }
