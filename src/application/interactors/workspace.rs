@@ -646,12 +646,25 @@ impl SetWorkspacePinInteractor {
 
 #[derive(Clone)]
 pub struct GetWorkspacePinInteractor {
+    db_session: Arc<dyn DBSession>,
+    workspace_reader: Arc<dyn WorkspaceReader>,
     workspace_pin_reader: Arc<dyn WorkspacePinReader>,
+    workspace_pin_writer: Arc<dyn WorkspacePinWriter>,
 }
 
 impl GetWorkspacePinInteractor {
-    pub fn new(workspace_pin_reader: Arc<dyn WorkspacePinReader>) -> Self {
-        Self { workspace_pin_reader }
+    pub fn new(
+        db_session: Arc<dyn DBSession>,
+        workspace_reader: Arc<dyn WorkspaceReader>,
+        workspace_pin_reader: Arc<dyn WorkspacePinReader>,
+        workspace_pin_writer: Arc<dyn WorkspacePinWriter>,
+    ) -> Self {
+        Self {
+            db_session,
+            workspace_reader,
+            workspace_pin_reader,
+            workspace_pin_writer,
+        }
     }
 
     pub async fn execute(&self, dto: IdDTO) -> AppResult<IdDTO> {
@@ -663,8 +676,43 @@ impl GetWorkspacePinInteractor {
             .await?
             .ok_or(AppError::WorkspacePinNotFound)?;
 
+        let accessible = self
+            .workspace_reader
+            .is_accessible_by_user(&workspace_pin.workspace_id, &user_id)
+            .await?;
+
+        if !accessible {
+            self.workspace_pin_writer.delete(&user_id).await?;
+            self.db_session.commit().await?;
+            return Err(AppError::WorkspacePinNotFound);
+        }
+
         Ok(IdDTO {
             id: workspace_pin.workspace_id.value.to_string(),
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct DeleteWorkspacePinInteractor {
+    db_session: Arc<dyn DBSession>,
+    workspace_pin_writer: Arc<dyn WorkspacePinWriter>,
+}
+
+impl DeleteWorkspacePinInteractor {
+    pub fn new(db_session: Arc<dyn DBSession>, workspace_pin_writer: Arc<dyn WorkspacePinWriter>) -> Self {
+        Self {
+            db_session,
+            workspace_pin_writer,
+        }
+    }
+
+    pub async fn execute(&self, dto: IdDTO) -> AppResult<()> {
+        let user_id: Id<User> = dto.id.try_into()?;
+
+        self.workspace_pin_writer.delete(&user_id).await?;
+        self.db_session.commit().await?;
+
+        Ok(())
     }
 }
