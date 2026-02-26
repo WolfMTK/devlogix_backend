@@ -782,6 +782,27 @@ impl WorkspacePinWriter for WorkspacePinGateway {
             })
             .await
     }
+
+    async fn delete(&self, user_id: &Id<User>) -> AppResult<()> {
+        self.session
+            .with_tx(|tx| {
+                let user_id = user_id.value;
+                async move {
+                    sqlx::query(
+                        r#"
+                        DELETE FROM workspace_pins
+                        WHERE user_id = $1
+                    "#,
+                    )
+                    .bind(user_id)
+                    .execute(tx.as_mut())
+                    .await?;
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await
+    }
 }
 
 #[async_trait]

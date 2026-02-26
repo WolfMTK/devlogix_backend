@@ -62,4 +62,5 @@ pub trait WorkspacePinReader: Send + Sync {
 #[async_trait]
 pub trait WorkspacePinWriter: Send + Sync {
     async fn set_workspace_pin(&self, workspace_id: &Id<Workspace>, user_id: &Id<User>) -> AppResult<()>;
+    async fn delete(&self, user_id: &Id<User>) -> AppResult<()>;
 }
