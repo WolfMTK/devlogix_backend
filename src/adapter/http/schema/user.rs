@@ -1,14 +1,24 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_email::Email;
+use serde_json::json;
 use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 use crate::adapter::http::schema::ValidPassword;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
-#[schema(description = "Request payload to register a new user.")]
+#[schema(
+    description = "Request payload to register a new user.",
+    example = json!({
+        "username": "username",
+        "email": "user@example.com",
+        "password1": "Password123!",
+        "password2": "Password123!"
+    })
+)]
 pub struct CreateUserRequest {
+    #[schema(example = "username")]
     #[validate(length(min = 6, max = 50, message = "Username must be between 6 and 50 characters"))]
     pub username: String,
     #[schema(value_type = String, format = Email, example = "user@example.com")]
@@ -22,9 +32,19 @@ pub struct CreateUserRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "019c47ec-183d-744e-b11d-cd409015bf13",
+    "username": "username",
+    "email": "user@example.com",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+}))]
 pub struct GetUserResponse {
+    #[schema(example = "019c47ec-183d-744e-b11d-cd409015bf13")]
     pub id: String,
+    #[schema(example = "username")]
     pub username: String,
+    #[schema(example = "user@example.com")]
     pub email: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -33,12 +53,19 @@ pub struct GetUserResponse {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(schema(function = "validate_update_user_request"))]
 #[schema(
-    description = "Request payload to update user profile fields. If password1 is provided, old_password and password2 are required."
+    description = "Request payload to update user profile fields. If password1 is provided, old_password and password2 are required.",
+    example = json!({
+        "username": "newusername",
+        "email": "newemail@example.com",
+        "old_password": "OldPassword123!",
+        "password1": "NewPassword123!",
+        "password2": "NewPassword123!"
+    })
 )]
 pub struct UpdateUserRequest {
-    #[schema(value_type = Option<String>, format = Email, example = "user@example.com")]
+    #[schema(value_type = Option<String>, format = Email, example = "newemail@example.com")]
     pub email: Option<Email>,
-    #[schema(example = "username")]
+    #[schema(example = "newusername")]
     #[validate(length(min = 6, max = 50, message = "Username must be between 6 and 50 characters"))]
     pub username: Option<String>,
     #[schema(value_type = Option<String>, example = "OldPassword123!")]
