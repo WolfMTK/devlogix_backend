@@ -891,6 +891,30 @@ pub async fn get_workspace_pin(
     Ok((StatusCode::OK, Json(IdResponse { id: workspace_pin.id })))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/workspaces/pin",
+    tag = "Workspaces",
+    responses(
+        (
+            status = 204,
+            description = "Workspace pin deleted (no content)"
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn delete_workspace_pin(
     auth_user: AuthUser,
     interactor: DeleteWorkspacePinInteractor,
@@ -915,8 +939,8 @@ mod tests {
     use crate::infra::state::AppState;
     use crate::tests::fixtures::init_test_app_state;
     use crate::tests::helpers::{
-        build_multipart_body, delete_user, find_workspace_id, find_workspace_id_and_slug, hash_password,
-        insert_confirmed_user, insert_session, insert_workspace, multipart_content_type, session_cookie,
+        build_multipart_body, delete_user, delete_workspace, find_workspace_id, find_workspace_id_and_slug,
+        hash_password, insert_confirmed_user, insert_session, insert_workspace, multipart_content_type, session_cookie,
         unique_credentials,
     };
 
@@ -1533,6 +1557,148 @@ mod tests {
 
         let req = Request::builder()
             .method("GET")
+            .uri("/workspaces/pin")
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Tests that get_workspace_pin returns 404 when pin points to a workspace
+    // the user no longer has access to (workspace deleted)
+    // Verifies:
+    // - Endpoint returns 404 NOT_FOUND
+    // - Stale pin is cleaned up automatically by the interactor
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_workspace_pin_stale(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let ws_id = insert_workspace(&state.pool, user_id, "Stale Workspace").await;
+        app.clone()
+            .oneshot(get_request_set_workspace_pin(ws_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+
+        delete_workspace(&state.pool, ws_id).await;
+        sqlx::query("DELETE FROM workspaces WHERE id = $1")
+            .bind(ws_id)
+            .execute(&state.pool)
+            .await
+            .unwrap();
+
+        let status = app
+            .oneshot(get_request_get_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    // === delete_workspace_pin ===
+    fn get_request_delete_workspace_pin(session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("DELETE")
+            .uri("/workspaces/pin")
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests successful deletion of workspace pin
+    // Verifies:
+    // - Endpoint returns 204 NO_CONTENT after deleting an existing pin
+    // - Subsequent get_workspace_pin returns 404
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_workspace_pin(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let ws_id = insert_workspace(&state.pool, user_id, "Delete Pin Workspace").await;
+        app.clone()
+            .oneshot(get_request_set_workspace_pin(ws_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+
+        let delete_status = app
+            .clone()
+            .oneshot(get_request_delete_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        // Pin must be gone now
+        let get_status = app
+            .oneshot(get_request_get_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(delete_status, StatusCode::NO_CONTENT);
+        assert_eq!(get_status, StatusCode::NOT_FOUND);
+    }
+
+    // Tests that delete_workspace_pin is idempotent (no pin exists)
+    // Verifies:
+    // - Endpoint returns 204 NO_CONTENT even when no pin exists
+    //   (DeleteWorkspacePinInteractor does DELETE without checking existence)
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_workspace_pin_no_pin(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let status = app
+            .oneshot(get_request_delete_workspace_pin(session_id, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+
+    // Tests that delete_workspace_pin fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when no session cookie is provided
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_workspace_pin_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let req = Request::builder()
+            .method("DELETE")
             .uri("/workspaces/pin")
             .body(Body::empty())
             .unwrap();

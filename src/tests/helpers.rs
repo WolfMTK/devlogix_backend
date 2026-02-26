@@ -147,3 +147,11 @@ pub fn unique_project_key() -> String {
     let id = Uuid::now_v7().as_simple().to_string();
     format!("P{}", &id[..7].to_uppercase())
 }
+
+pub async fn delete_workspace(pool: &PgPool, workspace_id: Uuid) {
+    sqlx::query("DELETE FROM workspaces WHERE id = $1")
+        .bind(workspace_id)
+        .execute(pool)
+        .await
+        .expect("delete workspace");
+}
