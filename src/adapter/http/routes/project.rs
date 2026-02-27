@@ -1,7 +1,7 @@
+use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
@@ -109,6 +109,59 @@ pub async fn create_project(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/projects/{workspace_id}",
+    tag = "Projects",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID", example = "019c47ec-183d-744e-b11d-cd409015bf13"),
+        PaginationQuery,
+    ),
+    responses(
+        (
+            status = 200,
+            description = "List of projects in the workspace",
+            body = ProjectListResponse,
+            example = json!({
+                "total": 2,
+                "page": 1,
+                "per_page": 20,
+                "items": [
+                    {
+                        "id": "019c47ec-183d-744e-b11d-cd409015bf14",
+                        "workspace_id": "019c47ec-183d-744e-b11d-cd409015bf13",
+                        "name": "My Project",
+                        "description": null,
+                        "project_key": "MYPROJ",
+                        "type_project": "scrum",
+                        "visibility": "private",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z"
+                    }
+                ]
+            })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 403,
+            description = "No access to the workspace",
+            body = ErrorResponse,
+            example = json!({ "error": "Access denied" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_projects(
     auth_user: AuthUser,
     interactor: GetProjectListInteractor,
@@ -148,6 +201,52 @@ pub async fn get_projects(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/projects/{workspace_id}/{project_id}",
+    tag = "Projects",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID", example = "019c47ec-183d-744e-b11d-cd409015bf13"),
+        ("project_id" = String, Path, description = "Project ID", example = "019c47ec-183d-744e-b11d-cd409015bf14"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Project details",
+            body = GetProjectResponse,
+            example = json!({
+                "id": "019c47ec-183d-744e-b11d-cd409015bf14",
+                "workspace_id": "019c47ec-183d-744e-b11d-cd409015bf13",
+                "name": "My Project",
+                "description": "A project for tracking tasks",
+                "project_key": "MYPROJ",
+                "type_project": "scrum",
+                "visibility": "private",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            })
+        ),
+        (
+            status = 401,
+            description = "Not authenticated or no access to the workspace",
+            body = ErrorResponse,
+            example = json!({ "error": "Invalid Credentials" })
+        ),
+        (
+            status = 404,
+            description = "Project not found",
+            body = ErrorResponse,
+            example = json!({ "error": "Project not found" })
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            example = json!({ "error": "Internal Server Error" })
+        )
+    ),
+    security(("cookieAuth" = []))
+)]
 pub async fn get_project(
     auth_user: AuthUser,
     interactor: GetProjectInteractor,
@@ -179,6 +278,7 @@ pub async fn get_project(
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
     use rstest::rstest;
     use serde_json::Value;
     use serial_test::serial;
@@ -189,8 +289,8 @@ mod tests {
     use crate::infra::state::AppState;
     use crate::tests::fixtures::init_test_app_state;
     use crate::tests::helpers::{
-        delete_user, hash_password, insert_confirmed_user, insert_session, insert_workspace, session_cookie,
-        unique_credentials, unique_project_key,
+        delete_user, hash_password, insert_confirmed_user, insert_project, insert_session, insert_workspace,
+        session_cookie, unique_credentials, unique_project_key,
     };
 
     // === create_project ===
@@ -382,6 +482,284 @@ mod tests {
             .status();
 
         delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    // === get_projects ===
+    fn get_request_get_projects(workspace_id: Uuid, session_id: Uuid, cookie_name: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/projects/{}", workspace_id))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests successful retrieval of project list for an accessible workspace
+    // Verifies:
+    // - Endpoint returns 200 OK
+    // - Response JSON contains 'items' array and numeric 'total'
+    // - Created project appears in the list
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_projects_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let workspace_id = insert_workspace(&state.pool, user_id, "List Projects WS").await;
+        insert_project(&state.pool, workspace_id, "Listed Project", &unique_project_key()).await;
+
+        let resp = create_app(state.config.as_ref(), state.clone())
+            .oneshot(get_request_get_projects(workspace_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(json["items"].is_array(), "response must contain 'items' array");
+        assert!(json["total"].is_number(), "response must contain 'total' field");
+        let total = json["total"].as_i64().unwrap_or(0);
+        assert!(total >= 1, "expected at least 1 project, got {total}");
+    }
+
+    // Tests that get_projects returns empty list when no projects exist
+    // Verifies:
+    // - Endpoint returns 200 OK with total = 0 and empty items
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_projects_empty(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let workspace_id = insert_workspace(&state.pool, user_id, "Empty Projects WS").await;
+
+        let resp = app
+            .oneshot(get_request_get_projects(workspace_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["total"].as_i64().unwrap_or(-1), 0);
+        assert_eq!(json["items"].as_array().map(|a| a.len()).unwrap_or(1), 0);
+    }
+
+    // Tests that get_projects fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_projects_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/projects/{}", Uuid::now_v7()))
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Tests that get_projects fails when user has no access to the workspace
+    // Verifies:
+    // - Endpoint returns 403 FORBIDDEN (AccessDenied from GetProjectListInteractor)
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_projects_no_access(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username_owner, email_owner) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let owner_id = insert_confirmed_user(&state.pool, &username_owner, &email_owner, &hashed).await;
+        let workspace_id = insert_workspace(&state.pool, owner_id, "Private Owner WS").await;
+
+        let (username_other, email_other) = unique_credentials();
+        let other_id = insert_confirmed_user(&state.pool, &username_other, &email_other, &hashed).await;
+        let other_session = insert_session(&state.pool, other_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let status = app
+            .oneshot(get_request_get_projects(workspace_id, other_session, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, owner_id).await;
+        delete_user(&state.pool, other_id).await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    // === get_project ===
+    fn get_request_get_project(
+        workspace_id: Uuid,
+        project_id: &str,
+        session_id: Uuid,
+        cookie_name: &str,
+    ) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(format!("/projects/{}/{}", workspace_id, project_id))
+            .header("cookie", session_cookie(session_id, cookie_name))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    // Tests successful retrieval of a single project
+    // Verifies:
+    // - Endpoint returns 200 OK
+    // - Response contains correct project fields (id, name, project_key, type_project, visibility)
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_project_success(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let workspace_id = insert_workspace(&state.pool, user_id, "Get Project WS").await;
+        let project_key = unique_project_key();
+        let project_id = insert_project(&state.pool, workspace_id, "Single Project", &project_key)
+            .await
+            .to_string();
+
+        let resp = create_app(state.config.as_ref(), state.clone())
+            .oneshot(get_request_get_project(workspace_id, &project_id, session_id, &cookie_name))
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: Value = serde_json::from_slice(&bytes).unwrap();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["id"], project_id);
+        assert_eq!(json["name"], "Single Project");
+        assert_eq!(json["project_key"], project_key);
+        assert_eq!(json["type_project"], "scrum");
+        assert_eq!(json["visibility"], "private");
+    }
+
+    // Tests that get_project returns 404 for a non-existent project ID
+    // Verifies:
+    // - Endpoint returns 404 NOT_FOUND (AppError::ProjectNotFound => 404)
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_project_not_found(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let (username, email) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let user_id = insert_confirmed_user(&state.pool, &username, &email, &hashed).await;
+        let session_id = insert_session(&state.pool, user_id).await;
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        let workspace_id = insert_workspace(&state.pool, user_id, "Not Found WS").await;
+        let fake_project_id = Uuid::now_v7().to_string();
+
+        let status = app
+            .oneshot(get_request_get_project(
+                workspace_id,
+                &fake_project_id,
+                session_id,
+                &cookie_name,
+            ))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, user_id).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    // Tests that get_project fails for unauthenticated requests
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_project_unauthorized(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let app = create_app(state.config.as_ref(), state.clone());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/projects/{}/{}", Uuid::now_v7(), Uuid::now_v7()))
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Tests that get_project fails when the requesting user has no access to the workspace
+    // Verifies:
+    // - Endpoint returns 401 UNAUTHORIZED when project exists but workspace is inaccessible
+    //   (GetProjectInteractor: project found, then is_accessible_by_user = false => InvalidCredentials => 401)
+    #[rstest]
+    #[tokio::test]
+    #[serial]
+    async fn test_get_project_no_workspace_access(#[future] init_test_app_state: anyhow::Result<AppState>) {
+        let state = init_test_app_state.await.expect("init app state");
+        let cookie_name = state.config.session.cookie_name.clone();
+
+        // Owner creates workspace and project
+        let (username_owner, email_owner) = unique_credentials();
+        let hashed = hash_password(&state, "Password123!").await;
+        let owner_id = insert_confirmed_user(&state.pool, &username_owner, &email_owner, &hashed).await;
+        let workspace_id = insert_workspace(&state.pool, owner_id, "Owner Only WS").await;
+
+        let project_id = insert_project(&state.pool, workspace_id, "Owner Project", &unique_project_key())
+            .await
+            .to_string();
+
+        // Other user has no access to the workspace
+        let (username_other, email_other) = unique_credentials();
+        let other_id = insert_confirmed_user(&state.pool, &username_other, &email_other, &hashed).await;
+        let other_session = insert_session(&state.pool, other_id).await;
+
+        let status = create_app(state.config.as_ref(), state.clone())
+            .oneshot(get_request_get_project(workspace_id, &project_id, other_session, &cookie_name))
+            .await
+            .unwrap()
+            .status();
+
+        delete_user(&state.pool, owner_id).await;
+        delete_user(&state.pool, other_id).await;
 
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
