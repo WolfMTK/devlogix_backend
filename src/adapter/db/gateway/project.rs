@@ -143,12 +143,12 @@ impl ProjectReader for ProjectGateway {
                                 name,
                                 description,
                                 project_key,
-                                type_project,
-                                visibility,
+                                type_project::TEXT,
+                                visibility::TEXT,
                                 created_at,
                                 updated_at
                             FROM projects
-                            WHERE id = $1
+                            WHERE workspace_id = $1
                             LIMIT $2 OFFSET $3
                     "#,
                     )
@@ -201,8 +201,8 @@ impl ProjectReader for ProjectGateway {
                             name,
                             description,
                             project_key,
-                            type_project,
-                            visibility,
+                            type_project::TEXT,
+                            visibility::TEXt,
                             created_at,
                             updated_at
                         FROM projects
