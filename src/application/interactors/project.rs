@@ -75,7 +75,7 @@ impl CreateProjectInteractor {
 }
 
 #[derive(Clone)]
-struct GetProjectListInteractor {
+pub struct GetProjectListInteractor {
     workspace_reader: Arc<dyn WorkspaceReader>,
     project_reader: Arc<dyn ProjectReader>,
 }
@@ -139,7 +139,7 @@ impl GetProjectListInteractor {
 }
 
 #[derive(Clone)]
-struct GetProjectInteractor {
+pub struct GetProjectInteractor {
     workspace_reader: Arc<dyn WorkspaceReader>,
     project_reader: Arc<dyn ProjectReader>,
 }
