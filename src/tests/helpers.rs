@@ -155,3 +155,19 @@ pub async fn delete_workspace(pool: &PgPool, workspace_id: Uuid) {
         .await
         .expect("delete workspace");
 }
+
+pub async fn insert_project(pool: &PgPool, workspace_id: Uuid, name: &str, project_key: &str) -> Uuid {
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO projects (workspace_id, name, project_key, type_project, visibility)
+        VALUES ($1, $2, $3, 'scrum'::projects_type_project, 'private'::projects_visibility)
+        RETURNING id
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(name)
+    .bind(project_key)
+    .fetch_one(pool)
+    .await
+    .expect("insert project")
+}
