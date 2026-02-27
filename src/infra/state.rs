@@ -18,7 +18,9 @@ use crate::application::app_error::{AppError, AppResult};
 use crate::application::interactors::auth::{LoginInteractor, LogoutInteractor};
 use crate::application::interactors::email_confirmation::{ConfirmEmailInteractor, ResendConfirmationInteractor};
 use crate::application::interactors::password_reset::{RequestPasswordResetInteractor, ResetPasswordInteractor};
-use crate::application::interactors::project::CreateProjectInteractor;
+use crate::application::interactors::project::{
+    CreateProjectInteractor, GetProjectInteractor, GetProjectListInteractor,
+};
 use crate::application::interactors::session::ValidateSessionInteractor;
 use crate::application::interactors::users::{CreateUserInteractor, GetMeInteractor, UpdateUserInteractor};
 use crate::application::interactors::workspace::{
@@ -725,5 +727,55 @@ where
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
         let app_state = AppState::from_ref(state);
         DeleteWorkspacePinInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetProjectListInteractor
+#[async_trait]
+impl FromAppState for GetProjectListInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace = WorkspaceGateway::new(session.clone());
+        let project = ProjectGateway::new(session);
+
+        Ok(GetProjectListInteractor::new(Arc::new(workspace), Arc::new(project)))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetProjectListInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetProjectListInteractor::from_app_state(&app_state).await
+    }
+}
+
+// GetProjectInteractor
+#[async_trait]
+impl FromAppState for GetProjectInteractor {
+    async fn from_app_state(state: &AppState) -> AppResult<Self> {
+        let session = SqlxSession::new_lazy(state.pool.clone());
+        let workspace = WorkspaceGateway::new(session.clone());
+        let project = ProjectGateway::new(session);
+
+        Ok(GetProjectInteractor::new(Arc::new(workspace), Arc::new(project)))
+    }
+}
+
+impl<S> FromRequestParts<S> for GetProjectInteractor
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> AppResult<Self> {
+        let app_state = AppState::from_ref(state);
+        GetProjectInteractor::from_app_state(&app_state).await
     }
 }
