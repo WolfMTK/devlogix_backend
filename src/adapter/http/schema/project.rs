@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use utoipa::ToSchema;
@@ -24,4 +25,25 @@ pub struct CreateProjectRequest {
     pub type_project: String,
     #[schema(example = "private", value_type = String)]
     pub visibility: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ProjectListResponse {
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+    pub items: Vec<GetProjectResponse>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetProjectResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub project_key: String,
+    pub type_project: String,
+    pub visibility: String,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
