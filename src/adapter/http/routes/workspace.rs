@@ -31,9 +31,7 @@ use crate::application::interactors::workspace::{
     SetWorkspacePinInteractor, UpdateWorkspaceInteractor,
 };
 use crate::infra::config::AppConfig;
-
-const DEFAULT_PAGE: i64 = 1;
-const DEFAULT_PER_PAGE: i64 = 20;
+use crate::infra::constants::{DEFAULT_PAGE, DEFAULT_PER_PAGE};
 
 #[utoipa::path(
     post,
