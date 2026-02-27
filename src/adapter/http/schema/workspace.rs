@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_email::Email;
+#[allow(unused_imports)]
 use serde_json::json;
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;

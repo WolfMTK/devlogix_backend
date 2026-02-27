@@ -1,4 +1,5 @@
 use serde::Serialize;
+#[allow(unused_imports)]
 use serde_json::json;
 use utoipa::ToSchema;
 

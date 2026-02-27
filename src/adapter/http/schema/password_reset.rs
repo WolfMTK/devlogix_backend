@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde_email::Email;
+#[allow(unused_imports)]
 use serde_json::json;
 use utoipa::ToSchema;
 use validator::Validate;
