@@ -1,14 +1,19 @@
-use axum::Json;
+use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::Json;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
 use crate::adapter::http::schema::auth::MessageResponse;
-use crate::adapter::http::schema::project::CreateProjectRequest;
+use crate::adapter::http::schema::pagination::PaginationQuery;
+use crate::adapter::http::schema::project::{CreateProjectRequest, GetProjectResponse, ProjectListResponse};
 use crate::application::app_error::AppResult;
-use crate::application::dto::project::CreateProjectDTO;
-use crate::application::interactors::project::CreateProjectInteractor;
+use crate::application::dto::project::{CreateProjectDTO, GetProjectDTO, GetProjectListDTO};
+use crate::application::interactors::project::{
+    CreateProjectInteractor, GetProjectInteractor, GetProjectListInteractor,
+};
+use crate::infra::constants::{DEFAULT_PAGE, DEFAULT_PER_PAGE};
 
 #[utoipa::path(
     post,
@@ -84,22 +89,88 @@ use crate::application::interactors::project::CreateProjectInteractor;
 pub async fn create_project(
     auth_user: AuthUser,
     interactor: CreateProjectInteractor,
-    Json(paload): Json<CreateProjectRequest>,
+    Json(payload): Json<CreateProjectRequest>,
 ) -> AppResult<impl IntoResponse> {
     let dto = CreateProjectDTO {
         user_id: auth_user.user_id,
-        workspace_id: paload.workspace_id,
-        name: paload.name,
-        description: paload.description,
-        project_key: paload.project_key,
-        type_project: paload.type_project,
-        visibility: paload.visibility,
+        workspace_id: payload.workspace_id,
+        name: payload.name,
+        description: payload.description,
+        project_key: payload.project_key,
+        type_project: payload.type_project,
+        visibility: payload.visibility,
     };
     interactor.execute(dto).await?;
     Ok((
         StatusCode::CREATED,
         Json(MessageResponse {
             message: "Project created successfully".to_string(),
+        }),
+    ))
+}
+
+pub async fn get_projects(
+    auth_user: AuthUser,
+    interactor: GetProjectListInteractor,
+    Path(workspace_id): Path<String>,
+    Query(query): Query<PaginationQuery>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetProjectListDTO {
+        user_id: auth_user.user_id,
+        workspace_id: workspace_id,
+        page: query.page.unwrap_or(DEFAULT_PAGE),
+        per_page: query.per_page.unwrap_or(DEFAULT_PER_PAGE),
+    };
+    let result = interactor.executor(dto).await?;
+
+    Ok((
+        StatusCode::OK,
+        Json(ProjectListResponse {
+            items: result
+                .items
+                .into_iter()
+                .map(|p| GetProjectResponse {
+                    id: p.id,
+                    workspace_id: p.workspace_id,
+                    name: p.name,
+                    description: p.description,
+                    project_key: p.project_key,
+                    type_project: p.type_project,
+                    visibility: p.visibility,
+                    updated_at: p.updated_at,
+                    created_at: p.created_at,
+                })
+                .collect(),
+            total: result.total,
+            per_page: result.per_page,
+            page: result.page,
+        }),
+    ))
+}
+
+pub async fn get_project(
+    auth_user: AuthUser,
+    interactor: GetProjectInteractor,
+    Path((workspace_id, project_id)): Path<(String, String)>,
+) -> AppResult<impl IntoResponse> {
+    let dto = GetProjectDTO {
+        user_id: auth_user.user_id,
+        workspace_id: workspace_id,
+        project_id: project_id,
+    };
+    let result = interactor.execute(dto).await?;
+    Ok((
+        StatusCode::OK,
+        Json(GetProjectResponse {
+            id: result.id,
+            workspace_id: result.workspace_id,
+            name: result.name,
+            description: result.description,
+            project_key: result.project_key,
+            type_project: result.type_project,
+            visibility: result.visibility,
+            updated_at: result.updated_at,
+            created_at: result.created_at,
         }),
     ))
 }

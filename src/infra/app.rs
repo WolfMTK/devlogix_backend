@@ -1,7 +1,7 @@
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{self};
 use axum::routing::{delete, get, patch, post, put};
-use axum::{Router, middleware};
+use axum::{middleware, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -12,7 +12,7 @@ use crate::adapter::http::middleware::auth::{auth_middleware, session_cookie_mid
 use crate::adapter::http::routes::auth::{
     confirm_email, forgot_password, login, logout, resend_confirmation, reset_password,
 };
-use crate::adapter::http::routes::project::create_project;
+use crate::adapter::http::routes::project::{create_project, get_project, get_projects};
 use crate::adapter::http::routes::user::{get_me, register, update_user};
 use crate::adapter::http::routes::workspace::{
     accept_workspace_invite, check_workspace_owner, create_workspace, delete_workspace, delete_workspace_pin,
@@ -114,6 +114,8 @@ pub fn workspace_router(state: AppState) -> Router<AppState> {
 pub fn project_router(state: AppState) -> Router<AppState> {
     let protected_routes = Router::new()
         .route("/", post(create_project))
+        .route("/{workspace_id}", get(get_projects))
+        .route("/{workspace_id}/{project_id}", get(get_project))
         .route_layer(middleware::from_fn_with_state(state.clone(), session_cookie_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
