@@ -8,7 +8,6 @@ pub struct CreateProjectDTO {
     pub description: Option<String>,
     pub project_key: String,
     pub type_project: String,
-    pub visibility: String,
 }
 
 #[derive(Debug, Clone)]

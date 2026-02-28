@@ -1,7 +1,7 @@
-use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::Json;
 
 use crate::adapter::http::app_error_impl::ErrorResponse;
 use crate::adapter::http::middleware::extractor::AuthUser;
@@ -98,7 +98,6 @@ pub async fn create_project(
         description: payload.description,
         project_key: payload.project_key,
         type_project: payload.type_project,
-        visibility: payload.visibility,
     };
     interactor.execute(dto).await?;
     Ok((
@@ -329,7 +328,6 @@ mod tests {
             "description": "A test project",
             "project_key": unique_project_key(),
             "type_project": "scrum",
-            "visibility": "private"
         });
 
         let req = get_request_create_project(&body, session_id, &cookie_name);
@@ -355,7 +353,6 @@ mod tests {
             "name": "Test Project",
             "project_key": unique_project_key(),
             "type_project": "scrum",
-            "visibility": "private"
         });
 
         let req = Request::builder()
@@ -394,7 +391,6 @@ mod tests {
             "name": "Intruder Project",
             "project_key": unique_project_key(),
             "type_project": "kanban",
-            "visibility": "private"
         });
 
         let req = get_request_create_project(&body, other_session, &cookie_name);
@@ -431,7 +427,6 @@ mod tests {
             "name": "First Project",
             "project_key": project_key,
             "type_project": "kanban",
-            "visibility": "private"
         });
 
         app.clone()
@@ -472,7 +467,6 @@ mod tests {
             "name": "Ghost Project",
             "project_key": unique_project_key(),
             "type_project": "scrum",
-            "visibility": "private"
         });
 
         let status = app

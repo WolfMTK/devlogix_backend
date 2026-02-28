@@ -56,7 +56,6 @@ impl CreateProjectInteractor {
         }
 
         let type_project: ProjectType = dto.type_project.parse()?;
-        let visibility: ProjectVisibility = dto.visibility.parse()?;
 
         let project = Project::new(
             workspace_id,
@@ -64,7 +63,7 @@ impl CreateProjectInteractor {
             dto.description,
             dto.project_key,
             type_project,
-            visibility,
+            ProjectVisibility::Private,
         );
 
         self.project_writer.insert(project).await?;

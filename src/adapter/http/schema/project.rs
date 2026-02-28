@@ -11,7 +11,6 @@ use utoipa::ToSchema;
     "description": "A project for tracking tasks",
     "project_key": "MYPROJ",
     "type_project": "scrum",
-    "visibility": "private"
 }))]
 pub struct CreateProjectRequest {
     #[schema(example = "019c47ec-183d-744e-b11d-cd409015bf13")]
@@ -24,8 +23,6 @@ pub struct CreateProjectRequest {
     pub project_key: String,
     #[schema(example = "scrum", value_type = String)]
     pub type_project: String,
-    #[schema(example = "private", value_type = String)]
-    pub visibility: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
