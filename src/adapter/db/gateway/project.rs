@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::FutureExt;
-use sqlx::Row;
 use sqlx::postgres::PgRow;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::adapter::db::session::SqlxSession;
@@ -105,21 +105,30 @@ impl ProjectWriter for ProjectGateway {
 
 #[async_trait]
 impl ProjectReader for ProjectGateway {
-    async fn check_project_key(&self, project_key: &str) -> AppResult<bool> {
+    async fn check_project_key_and_name(
+        &self,
+        workspace_id: &Id<Workspace>,
+        project_key: &str,
+        name: &str,
+    ) -> AppResult<bool> {
         self.session
             .with_tx(|tx| {
                 let project_key = project_key.to_owned();
+                let workspace_id = workspace_id.value;
+                let name = name.to_owned();
                 async move {
                     let row = sqlx::query(
                         r#"
                         SELECT EXISTS (
                             SELECT 1
                             FROM projects
-                            WHERE projects.project_key = $1
+                            WHERE project_key = $1 AND workspace_id = $2 AND name = $3
                         ) as is_project_key
                     "#,
                     )
                     .bind(project_key)
+                    .bind(workspace_id)
+                    .bind(name)
                     .fetch_one(tx.as_mut())
                     .await?;
 

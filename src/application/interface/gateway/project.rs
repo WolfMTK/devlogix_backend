@@ -12,7 +12,7 @@ pub trait ProjectWriter: Send + Sync {
 
 #[async_trait]
 pub trait ProjectReader: Send + Sync {
-    async fn check_project_key(&self, project_key: &str) -> AppResult<bool>;
+    async fn check_project_key_and_name(&self, workspace_id: &Id<Workspace>, project_key: &str, name: &str) -> AppResult<bool>;
     async fn get_all(&self, workspace_id: &Id<Workspace>, limit: i64, offset: i64) -> AppResult<Vec<Project>>;
     async fn count_projects(&self, workspace_id: &Id<Workspace>) -> AppResult<i64>;
     async fn get(&self, workspace_id: &Id<Workspace>, project_id: &Id<Project>) -> AppResult<Option<Project>>;

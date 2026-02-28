@@ -49,7 +49,10 @@ impl CreateProjectInteractor {
             return Err(AppError::InvalidCredentials);
         }
 
-        let is_key_project = self.project_reader.check_project_key(dto.project_key.as_str()).await?;
+        let is_key_project = self
+            .project_reader
+            .check_project_key_and_name(&workspace_id, dto.project_key.as_str(), dto.name.as_str())
+            .await?;
 
         if is_key_project {
             return Err(AppError::ProjectAlreadyExists);
